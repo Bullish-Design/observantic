@@ -1,0 +1,14 @@
+[project]
+name = "observantic"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "confidantic",
+    "eventic",
+]
+
+[tool.uv.sources]
+eventic = { git = "https://github.com/Bullish-Design/eventic.git" }
+confidantic = { git = "https://github.com/Bullish-Design/confidantic.git" }
