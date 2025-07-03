@@ -29,7 +29,7 @@ instance is as simple as ``ObservanticSettings(_env_file=".env.test")``.
 from pathlib import Path
 from typing import Final, Optional
 
-from confidantic import Settings as _BaseSettings, GitInfo
+from confidantic import Settings as _BaseSettings  # , GitInfo
 from pydantic import Field, field_validator
 
 __all__ = [
@@ -53,7 +53,8 @@ class ObservanticSettings(_BaseSettings):
         description="Database/queue URL consumed by Eventic.",
     )
     LOG_LEVEL: str = Field(
-        default="INFO", description="Root log level used by `logging`.")
+        default="INFO", description="Root log level used by `logging`."
+    )
 
     # ------------------------------------------------------------------
     # Metadata – dynamically resolved (Git, semantic version, etc.)
@@ -63,7 +64,8 @@ class ObservanticSettings(_BaseSettings):
         description="Semantic version derived from Git tags, if any.",
     )
     COMMIT_SHA: Optional[str] = Field(
-        default=None, description="Current commit SHA if in a Git repo.")
+        default=None, description="Current commit SHA if in a Git repo."
+    )
 
     # ------------------------------------------------------------------
     # Internal helpers
