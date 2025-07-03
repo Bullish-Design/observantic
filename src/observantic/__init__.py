@@ -1,19 +1,31 @@
+from __future__ import annotations
+
 """
 Observantic: Event monitoring library that bridges external events to 
 Eventic Records through customizable hooks.
 """
 
-from .core.base import EventWatcher
-from .monitors.file import FileEventBase
-from .monitors.sqlite import SQLiteEventBase
-from .exceptions import ObservanticException, WatcherException
+from .config import ObservanticSettings, settings
+from .core import EventWatcher, EventicShim, RecordMixin
+from .monitors import FileEventBase, SQLiteEventBase, WebhookEventBase
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
+    # Core classes
     "EventWatcher",
-    "FileEventBase", 
+    "EventicShim", 
+    "RecordMixin",
+    
+    # Watcher implementations
+    "FileEventBase",
     "SQLiteEventBase",
-    "ObservanticException",
-    "WatcherException",
+    "WebhookEventBase",
+    
+    # Configuration
+    "ObservanticSettings",
+    "settings",
 ]
+
+# Re-export Eventic init for convenience
+init = EventicShim.init

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-"""observantic.settings
-=======================
+"""observantic.config
+=====================
 Global configuration layer built on **Confidantic**.  A single
 :class:`ObservanticSettings` instance is created lazily and shared across the
 process, giving every watcher access to database URLs, log levels and version
@@ -9,10 +9,10 @@ metadata *without* manual plumbing.
 
 Design goals
 ------------
-* **Zero‑boilerplate** – defaults “just work” in local dev.
+* **Zero‑boilerplate** – defaults "just work" in local dev.
 * **Predictable overrides** – all vars can be changed via ENV or `.env`.
 * **Git‑aware** – semantic version and commit SHA are auto‑injected when the
-  current working directory is a Git repo (courtesy of Confidantic’s
+  current working directory is a Git repo (courtesy of Confidantic's
   ``GitInfo`` helper).
 * **Type‑safe** – powered by Pydantic v2, so every attribute is validated at
   import‑time.
@@ -53,8 +53,7 @@ class ObservanticSettings(_BaseSettings):
         description="Database/queue URL consumed by Eventic.",
     )
     LOG_LEVEL: str = Field(
-        default="INFO", description="Root log level used by `logging`."
-    )
+        default="INFO", description="Root log level used by `logging`.")
 
     # ------------------------------------------------------------------
     # Metadata – dynamically resolved (Git, semantic version, etc.)
@@ -64,8 +63,7 @@ class ObservanticSettings(_BaseSettings):
         description="Semantic version derived from Git tags, if any.",
     )
     COMMIT_SHA: Optional[str] = Field(
-        default=None, description="Current commit SHA if in a Git repo."
-    )
+        default=None, description="Current commit SHA if in a Git repo.")
 
     # ------------------------------------------------------------------
     # Internal helpers

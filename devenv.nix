@@ -25,23 +25,38 @@
 
   };
 
-  # https://devenv.sh/languages/
-  # languages.rust.enable = true;
-
-  # https://devenv.sh/processes/
-  # processes.cargo-watch.exec = "cargo-watch";
-
   # https://devenv.sh/services/
-  # services.postgres.enable = true;
+  services.postgres = {
+    enable = true;
+    package = pkgs.postgresql_17;
+    initialScript = ''CREATE USER postgres WITH PASSWORD 'postgres'; ALTER USER postgres WITH SUPERUSER;'';
+    initialDatabases = [
+      { 
+        name = "eventic"; 
+        user= "postgres"; 
+        pass = "postgres"; 
+      }
+    ]; 
+    listen_addresses = "127.0.0.1";
+    port = 5432;
+    settings = { 
+      unix_socket_directories = "/run/user/1000/devenv-11f13c9/postgres";
+      };
+    };
 
   # https://devenv.sh/scripts/
   scripts.hello.exec = ''
+    echo
     echo hello from $GREET
+    echo
   '';
 
   enterShell = ''
+    echo
     hello
+    echo
     git --version
+    echo
   '';
 
   # https://devenv.sh/tasks/
