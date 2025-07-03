@@ -70,10 +70,10 @@ class EventWatcher(BaseModel, ABC):
     """
 
     _hooks: Dict[str, list[HookFn]] = PrivateAttr(
-        default_factory=lambda: defaultdict(list), exclude=True
+        default_factory=lambda: defaultdict(list)
     )
-    _watching: bool = PrivateAttr(default=False, exclude=True)
-    _lock: Lock = PrivateAttr(default_factory=Lock, exclude=True)
+    _watching: bool = PrivateAttr(default=False)
+    _lock: Lock = PrivateAttr(default_factory=Lock)
 
     model_config = {"arbitrary_types_allowed": True}
 
