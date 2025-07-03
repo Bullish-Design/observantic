@@ -8,7 +8,7 @@ Global configuration for Observantic using Confidantic.
 from pathlib import Path
 from typing import Final, Optional
 
-from confidantic import Settings, PluginRegistry
+from confidantic import SettingsType, PluginRegistry
 from pydantic import Field, field_validator
 
 __all__ = [
@@ -17,7 +17,7 @@ __all__ = [
 ]
 
 
-class ObservanticMixin(Settings):
+class ObservanticMixin(SettingsType):
     """Observantic-specific settings mixed into Confidantic."""
 
     # Database/queue URL for Eventic
