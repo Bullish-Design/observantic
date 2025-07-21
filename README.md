@@ -1,6 +1,6 @@
 # Observantic
 
-Event monitoring library that bridges external events to Eventic Records through customizable hooks.
+Event monitoring library that bridges external events to Eventic Records through customizable hooks. Automatic event tracking and persistence.
 
 ## Installation
 

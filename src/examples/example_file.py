@@ -17,7 +17,7 @@ import os
 import time
 from pathlib import Path
 
-from eventic import Record
+from eventic import Record, Eventic
 from observantic import FileEventBase, init
 
 from dotenv import load_dotenv
@@ -41,7 +41,9 @@ print(f"\nConnecting to Postgres at {db_url}\n")
 
 
 # Initialize Eventic
-init(name="file-monitor-demo", database_url=db_url)
+instance = init(name="file-monitor-demo", database_url=db_url)
+print(f"\n\nInstance Type: {type(instance)}\n\n")
+instance.launch()
 
 
 class DocumentEvent(Record, FileEventBase):
@@ -52,8 +54,9 @@ class DocumentEvent(Record, FileEventBase):
     size: int = 0
 
     # Configure monitoring
-    watch_patterns = ["*.pdf", "*.txt", "*.docx"]
+    watch_patterns: list[str] = ["*.pdf", "*.txt", "*.docx", "*.md", "*.py"]
 
+    @Eventic.step()
     def on_file_created(self, event):
         """Handle new files."""
         file_path = Path(event.src_path)
@@ -62,14 +65,17 @@ class DocumentEvent(Record, FileEventBase):
         # Record already emitted by parent class
         print(f"📄 Created: {file_path.name} ({size} bytes)")
 
+    @Eventic.step()
     def on_file_modified(self, event):
         """Handle file modifications."""
         print(f"📝 Modified: {Path(event.src_path).name}")
 
+    @Eventic.step()
     def on_file_deleted(self, event):
         """Handle file deletions."""
         print(f"🗑️  Deleted: {Path(event.src_path).name}")
 
+    @Eventic.step()
     def on_start(self):
         """Called when monitoring starts."""
         print(f"Started monitoring: {self._watch_path}")
@@ -81,8 +87,10 @@ def main():
     print("Watching current directory for documents...")
     print("Press Ctrl+C to stop\n")
 
-    watcher = DocumentEvent()
-    watcher.start_watching(".")
+    watcher = DocumentEvent(
+        path="/home/andrew/Documents/Projects/observantic", event_type="modified"
+    )
+    watcher.start_watching("/home/andrew/Documents/Projects/observantic")
 
     try:
         while True:

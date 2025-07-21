@@ -8,7 +8,7 @@
 
   # https://devenv.sh/packages/
   packages = with pkgs; [
-    # Add your packages here
+    # Add your packages here:
     git
     
   ];
