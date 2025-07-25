@@ -230,7 +230,7 @@ def main(
     # Configure WebhookLogger class variables
     WebhookLogger.port = port
     WebhookLogger.host = host
-    WebhookLogger.webhook_paths = [p.strip() for p in paths.split(",")]
+    WebhookLogger.webhook_paths = [paths]  # [p.strip() for p in paths.split(",")]
     WebhookLogger._log_file = log_file
     WebhookLogger.parse_json_body = parse_json
 
