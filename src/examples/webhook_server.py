@@ -219,7 +219,7 @@ def main(
 
     # Initialize Eventic first
     print(f"🔌 Connecting to database @ {database_url}...")
-    real_url = "postgresql://eventic_user:eventic_pass@pinix:5432/eventic_db"
+    real_url = "postgresql://eventic_user:eventic_pass@postgres:5432/eventic_db"
     print(f"Using database URL: {real_url}")
     eventic_instance = init(name="webhook-server", database_url=real_url)
 
