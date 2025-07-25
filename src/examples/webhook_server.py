@@ -218,8 +218,10 @@ def main(
     global server_instance
 
     # Initialize Eventic first
-    print(f"🔌 Connecting to database @ {str(database_url)}...")
-    eventic_instance = init(name="webhook-server", database_url=str(database_url))
+    print(f"🔌 Connecting to database @ {database_url}...")
+    real_url = "postgresql://eventic_user:eventic_pass@pinix:5432/eventic_db"
+    print(f"Using database URL: {real_url}")
+    eventic_instance = init(name="webhook-server", database_url=real_url)
 
     # Launch Eventic in standalone mode
     print(f"🚀 Launching Eventic...")
