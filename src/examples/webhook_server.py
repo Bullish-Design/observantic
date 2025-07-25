@@ -176,7 +176,7 @@ def main(
         "0.0.0.0", "--host", "-h", help="Host to bind to", envvar="WEBHOOK_HOST"
     ),
     paths: str = typer.Option(
-        "/webhook,/api/webhook",
+        "/webhook",  # ",/api/webhook",
         "--paths",
         help="Comma-separated webhook paths",
         envvar="WEBHOOK_PATHS",
