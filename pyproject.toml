@@ -11,6 +11,16 @@ dependencies = [
     "watchdog>=6.0.0",
 ]
 
+[project.scripts]
+#eventic-example = "examples.demo:main"
+start = "examples.webhook_server:main"
+
+
 [tool.uv.sources]
 eventic = { git = "https://github.com/Bullish-Design/eventic.git" }
 confidantic = { git = "https://github.com/Bullish-Design/confidantic.git" }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/observantic", "src/examples"]
+
+
