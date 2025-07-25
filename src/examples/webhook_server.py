@@ -216,9 +216,9 @@ def main(
     WebhookLogger._log_file = Path(log_file)
     WebhookLogger.parse_json_body = parse_json
 
-    if auth_header and auth_value:
-        WebhookLogger.require_auth_header = auth_header
-        WebhookLogger.require_auth_value = auth_value
+    # if auth_header and auth_value:
+    #    WebhookLogger.require_auth_header = auth_header
+    #    WebhookLogger.require_auth_value = auth_value
 
     # Create server instance
     server_instance = WebhookLogger()
