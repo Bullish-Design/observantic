@@ -4,7 +4,7 @@
 #     "observantic @ git+https://github.com/Bullish-Design/observantic",
 #     "eventic @ git+https://github.com/Bullish-Design/eventic",
 #     "python-dotenv>=1.0.0",
-#     "click>=8.1.0",
+#     "typer>=0.12.0",
 # ]
 # ///
 """
@@ -23,12 +23,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-import click
+import typer
 from dotenv import load_dotenv
 from eventic import Record, Eventic
 from observantic import WebhookEventBase, init
 
 load_dotenv()
+
+app = typer.Typer()
 
 
 class WebhookLogger(Record, WebhookEventBase):
@@ -52,6 +54,7 @@ class WebhookLogger(Record, WebhookEventBase):
     _log_file: Path = Path("/data/webhooks.jsonl")
     _request_count: int = 0
 
+    @Eventic.step()
     def on_webhook_received(self, event):
         """Process and log incoming webhook."""
         self._request_count += 1
@@ -94,6 +97,12 @@ class WebhookLogger(Record, WebhookEventBase):
             )
             self.timestamp = time.time()
 
+            return {
+                "endpoint": self.endpoint,
+                "payload": self.payload,
+                "timestamp": self.timestamp,
+            }
+
         except Exception as e:
             print(f"✗ Error processing webhook: {e}")
             self.on_error(e, event)
@@ -109,6 +118,7 @@ class WebhookLogger(Record, WebhookEventBase):
             return preview[:max_length] + "..."
         return preview
 
+    @Eventic.step()
     def on_start(self):
         """Called when server starts."""
         print(f"\n{'=' * 50}")
@@ -121,10 +131,12 @@ class WebhookLogger(Record, WebhookEventBase):
             print(f"🔐 Auth required: {self.require_auth_header}")
         print(f"{'=' * 50}\n")
 
+    @Eventic.step()
     def on_stop(self):
         """Called when server stops."""
         print(f"\n✅ Server stopped after {self._request_count} requests")
 
+    @Eventic.step()
     def on_error(self, error: Exception, event=None):
         """Log errors."""
         error_entry = {
@@ -155,48 +167,52 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
-@click.command()
-@click.option(
-    "--port", default=8000, type=int, help="Port to listen on", envvar="WEBHOOK_PORT"
-)
-@click.option(
-    "--host", default="0.0.0.0", help="Host to bind to", envvar="WEBHOOK_HOST"
-)
-@click.option(
-    "--paths",
-    default="/webhook,/api/webhook",
-    help="Comma-separated webhook paths",
-    envvar="WEBHOOK_PATHS",
-)
-@click.option(
-    "--log-file",
-    default="/data/webhooks.jsonl",
-    type=click.Path(),
-    help="Path to JSONL log file",
-    envvar="WEBHOOK_LOG_FILE",
-)
-@click.option(
-    "--database-url",
-    default="postgresql://eventic_user:eventic_pass@pinix:5432/eventic_db",
-    help="PostgreSQL database URL",
-    envvar="DATABASE_URL",
-)
-@click.option(
-    "--auth-header",
-    help="Required auth header name (e.g., X-API-Key)",
-    envvar="WEBHOOK_AUTH_HEADER",
-)
-@click.option(
-    "--auth-value", help="Required auth header value", envvar="WEBHOOK_AUTH_VALUE"
-)
-@click.option(
-    "--parse-json/--no-parse-json",
-    default=True,
-    help="Auto-parse JSON request bodies",
-    envvar="WEBHOOK_PARSE_JSON",
-)
+@app.command()
 def main(
-    port, host, paths, log_file, database_url, auth_header, auth_value, parse_json
+    port: int = typer.Option(
+        8000, "--port", "-p", help="Port to listen on", envvar="WEBHOOK_PORT"
+    ),
+    host: str = typer.Option(
+        "0.0.0.0", "--host", "-h", help="Host to bind to", envvar="WEBHOOK_HOST"
+    ),
+    paths: str = typer.Option(
+        "/webhook,/api/webhook",
+        "--paths",
+        help="Comma-separated webhook paths",
+        envvar="WEBHOOK_PATHS",
+    ),
+    log_file: Path = typer.Option(
+        Path("/data/webhooks.jsonl"),
+        "--log-file",
+        "-l",
+        help="Path to JSONL log file",
+        envvar="WEBHOOK_LOG_FILE",
+    ),
+    database_url: str = typer.Option(
+        "postgresql://eventic_user:eventic_pass@pinix:5432/eventic_db",
+        "--database-url",
+        "-d",
+        help="PostgreSQL database URL",
+        envvar="DATABASE_URL",
+    ),
+    auth_header: Optional[str] = typer.Option(
+        None,
+        "--auth-header",
+        help="Required auth header name (e.g., X-API-Key)",
+        envvar="WEBHOOK_AUTH_HEADER",
+    ),
+    auth_value: Optional[str] = typer.Option(
+        None,
+        "--auth-value",
+        help="Required auth header value",
+        envvar="WEBHOOK_AUTH_VALUE",
+    ),
+    parse_json: bool = typer.Option(
+        True,
+        "--parse-json/--no-parse-json",
+        help="Auto-parse JSON request bodies",
+        envvar="WEBHOOK_PARSE_JSON",
+    ),
 ):
     """Run production webhook server with Observantic."""
     global server_instance
@@ -213,7 +229,7 @@ def main(
     WebhookLogger.port = port
     WebhookLogger.host = host
     WebhookLogger.webhook_paths = [p.strip() for p in paths.split(",")]
-    WebhookLogger._log_file = Path(log_file)
+    WebhookLogger._log_file = log_file
     WebhookLogger.parse_json_body = parse_json
 
     # if auth_header and auth_value:
@@ -242,4 +258,4 @@ def main(
 
 
 if __name__ == "__main__":
-    main()
+    app()
