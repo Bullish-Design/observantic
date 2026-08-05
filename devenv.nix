@@ -66,9 +66,14 @@
   # };
 
   # https://devenv.sh/tests/
+  # DB-backed tests are skipped unless TEST_DATABASE_URL is set. The devenv
+  # Postgres listens on 127.0.0.1:5432 (database "eventic", user/pass
+  # postgres/postgres), e.g.:
+  #   TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/eventic \
+  #     uv run pytest
   enterTest = ''
     echo "Running tests"
-    git --version | grep --color=auto "${pkgs.git.version}"
+    uv run pytest
   '';
 
   # https://devenv.sh/git-hooks/

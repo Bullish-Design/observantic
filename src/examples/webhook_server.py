@@ -9,52 +9,51 @@
 # ///
 """
 Production webhook server using Observantic.
-Logs all webhooks to JSONL and persists to Eventic.
+Logs all webhooks to JSONL. Persistence to Eventic is optional and enabled
+by calling observantic.init(...) with a reachable database.
 """
 
 from __future__ import annotations
 
 import json
-import os
 import signal
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 import typer
-from dotenv import load_dotenv
-from eventic import Record, Eventic
-from observantic import WebhookEventBase, init
+from eventic import Record
 
-load_dotenv()
+from observantic import WebhookEventBase, init
 
 app = typer.Typer()
 
 
 class WebhookLogger(Record, WebhookEventBase):
-    """Production webhook logger with JSONL output."""
+    """Production webhook logger with JSONL output.
 
-    # Record fields
+    All configuration is passed to the constructor (C-07) — never assigned
+    on the class after creation.
+    """
+
+    # Eventic Record fields (defaults so no store/DB is required).
     endpoint: str = "/webhook"
     payload: dict | str = {}
     timestamp: float = 0.0
 
-    # WebhookEventBase configuration (class variables)
-    # These are set dynamically in main()
+    # WebhookEventBase configuration (annotated overrides).
     port: int = 8000
     host: str = "0.0.0.0"
     webhook_paths: list[str] = ["/webhook", "/api/webhook"]
-    require_auth_header: Optional[str] = None
-    require_auth_value: Optional[str] = None
+    require_auth_header: str | None = None
+    require_auth_value: str | None = None
     parse_json_body: bool = True
 
-    # Logger configuration
+    # Logger configuration — private, set via constructor kwargs.
     _log_file: Path = Path("/data/webhooks.jsonl")
     _request_count: int = 0
 
-    @Eventic.step()
     def on_webhook_received(self, event):
         """Process and log incoming webhook."""
         self._request_count += 1
@@ -62,9 +61,7 @@ class WebhookLogger(Record, WebhookEventBase):
         try:
             # Create comprehensive log entry
             log_entry = {
-                "id": str(self.id),
-                "version": self.version,
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "request_number": self._request_count,
                 "path": event.path,
                 "method": event.method,
@@ -86,22 +83,10 @@ class WebhookLogger(Record, WebhookEventBase):
             # Console output with details
             body_preview = self._format_body_preview(event.body)
             print(
-                f"✓ [{self._request_count}] {event.method} {event.path} from {event.source_ip}"
+                f"✓ [{self._request_count}] {event.method} {event.path} "
+                f"from {event.source_ip}"
             )
             print(f"  Headers: {len(event.headers)} | Body: {body_preview}")
-
-            # Update record fields for persistence
-            self.endpoint = event.path
-            self.payload = (
-                event.body if isinstance(event.body, dict) else str(event.body)
-            )
-            self.timestamp = time.time()
-
-            return {
-                "endpoint": self.endpoint,
-                "payload": self.payload,
-                "timestamp": self.timestamp,
-            }
 
         except Exception as e:
             print(f"✗ Error processing webhook: {e}")
@@ -118,11 +103,10 @@ class WebhookLogger(Record, WebhookEventBase):
             return preview[:max_length] + "..."
         return preview
 
-    @Eventic.step()
     def on_start(self):
         """Called when server starts."""
         print(f"\n{'=' * 50}")
-        print(f"🚀 Webhook Server Started")
+        print("🚀 Webhook Server Started")
         print(f"{'=' * 50}")
         print(f"📡 Listening on: http://{self.host}:{self.port}")
         print(f"🔗 Endpoints: {', '.join(self.webhook_paths)}")
@@ -131,16 +115,14 @@ class WebhookLogger(Record, WebhookEventBase):
             print(f"🔐 Auth required: {self.require_auth_header}")
         print(f"{'=' * 50}\n")
 
-    @Eventic.step()
     def on_stop(self):
         """Called when server stops."""
         print(f"\n✅ Server stopped after {self._request_count} requests")
 
-    @Eventic.step()
     def on_error(self, error: Exception, event=None):
-        """Log errors."""
+        """Log errors (never leaks to clients; see webhook monitor)."""
         error_entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "error": str(error),
             "error_type": type(error).__name__,
             "event_path": getattr(event, "path", None) if event else None,
@@ -149,14 +131,14 @@ class WebhookLogger(Record, WebhookEventBase):
         try:
             with open(self._log_file.parent / "errors.jsonl", "a") as f:
                 f.write(json.dumps(error_entry) + "\n")
-        except:
+        except Exception:
             pass
 
         print(f"❌ Error: {error}")
 
 
 # Global instance for signal handling
-server_instance: Optional[WebhookLogger] = None
+server_instance: WebhookLogger | None = None
 
 
 def signal_handler(sig, frame):
@@ -176,7 +158,7 @@ def main(
         "0.0.0.0", "--host", "-h", help="Host to bind to", envvar="WEBHOOK_HOST"
     ),
     paths: str = typer.Option(
-        "/webhook",  # ",/api/webhook",
+        "/webhook",
         "--paths",
         help="Comma-separated webhook paths",
         envvar="WEBHOOK_PATHS",
@@ -189,19 +171,19 @@ def main(
         envvar="WEBHOOK_LOG_FILE",
     ),
     database_url: str = typer.Option(
-        "postgresql://eventic_user:eventic_pass@pinix:5432/eventic_db",
+        "postgresql://eventic_user:eventic_pass@localhost:5432/eventic_db",
         "--database-url",
         "-d",
         help="PostgreSQL database URL",
         envvar="DATABASE_URL",
     ),
-    auth_header: Optional[str] = typer.Option(
+    auth_header: str | None = typer.Option(
         None,
         "--auth-header",
         help="Required auth header name (e.g., X-API-Key)",
         envvar="WEBHOOK_AUTH_HEADER",
     ),
-    auth_value: Optional[str] = typer.Option(
+    auth_value: str | None = typer.Option(
         None,
         "--auth-value",
         help="Required auth header value",
@@ -217,29 +199,27 @@ def main(
     """Run production webhook server with Observantic."""
     global server_instance
 
-    # Initialize Eventic first
-    print(f"🔌 Connecting to database @ {database_url}...")
-    real_url = "postgresql://eventic_user:eventic_pass@postgres:5432/eventic_db"
-    print(f"Using database URL: {real_url}")
-    eventic_instance = init(name="webhook-server", database_url=real_url)
+    # Initialize Eventic (optional). If the database is unreachable the
+    # server still runs — persistence is simply unavailable (auto_persist is
+    # off by default; hooks receive events regardless).
+    try:
+        init(name="webhook-server", database_url=database_url)
+        print(f"🔌 Eventic initialized @ {database_url}")
+    except Exception as e:
+        print(f"⚠️  Eventic unavailable ({e}); persistence disabled")
 
-    # Launch Eventic in standalone mode
-    print(f"🚀 Launching Eventic...")
-    eventic_instance.launch()
-
-    # Configure WebhookLogger class variables
-    WebhookLogger.port = port
-    WebhookLogger.host = host
-    WebhookLogger.webhook_paths = [paths]  # [p.strip() for p in paths.split(",")]
-    WebhookLogger._log_file = log_file
-    WebhookLogger.parse_json_body = parse_json
-
-    # if auth_header and auth_value:
-    #    WebhookLogger.require_auth_header = auth_header
-    #    WebhookLogger.require_auth_value = auth_value
-
-    # Create server instance
-    server_instance = WebhookLogger()
+    # Configure the server entirely via constructor kwargs (C-07).
+    server_instance = WebhookLogger(
+        port=port,
+        host=host,
+        webhook_paths=[p.strip() for p in paths.split(",")],
+        parse_json_body=parse_json,
+        require_auth_header=auth_header,
+        require_auth_value=auth_value,
+    )
+    # Private attributes are not init kwargs in pydantic 2.11; assign after
+    # construction (private attrs are assignable even on frozen Records).
+    server_instance._log_file = log_file
 
     # Setup signal handlers
     signal.signal(signal.SIGINT, signal_handler)
