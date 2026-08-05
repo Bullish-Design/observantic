@@ -3,94 +3,71 @@
 # dependencies = [
 #     "observantic @ git+https://github.com/Bullish-Design/observantic",
 #     "eventic @ git+https://github.com/Bullish-Design/eventic",
-#     "python-dotenv",
 # ]
 # ///
 """
 File monitoring example for Observantic.
-Demonstrates watching a directory for PDF and text files.
+Watches the current directory for documents and prints hook callbacks.
 """
 
 from __future__ import annotations
 
-import os
 import time
 from pathlib import Path
 
-from eventic import Record, Eventic
-from observantic import FileEventBase, init
+from eventic import Record
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
-POSTGRES_DB = os.environ["POSTGRES_DB"]
-POSTGRES_USER = os.environ["POSTGRES_USER"]
-POSTGRES_PASSWORD = os.environ["POSTGRES_PASSWORD"]
-
-db_url = (
-    "postgresql://"
-    + POSTGRES_USER
-    + ":"
-    + POSTGRES_PASSWORD
-    + "@localhost/"
-    + POSTGRES_DB
-)
-
-print(f"\nConnecting to Postgres at {db_url}\n")
-
-
-# Initialize Eventic
-instance = init(name="file-monitor-demo", database_url=db_url)
-print(f"\n\nInstance Type: {type(instance)}\n\n")
-instance.launch()
+from observantic import FileEventBase
 
 
 class DocumentEvent(Record, FileEventBase):
-    """Monitor documents and create Records for each event."""
+    """Monitor documents; each event emits an instance of this Record.
 
-    path: str
-    event_type: str
+    Because this watcher subclasses Eventic's ``Record``, ``_emit()`` creates
+    *your* record (C-08). All class-level configuration must be annotated
+    (pydantic requirement); give every Record field a default so the watcher
+    can be built without a live store.
+    """
+
+    # Eventic Record fields (defaults so no store/DB is required).
+    path: str = ""
+    event_type: str = ""
     size: int = 0
 
-    # Configure monitoring
+    # Configure monitoring — annotated overrides (C-02).
     watch_patterns: list[str] = ["*.pdf", "*.txt", "*.docx", "*.md", "*.py"]
 
-    @Eventic.step()
+    # Persistence is opt-in. Call observantic.init(...) once to wire a store,
+    # then set auto_persist=True (Eventic 0.1.5 also persists a durable v0 row
+    # at construction and fires @on.create handlers). No launch() required.
+    auto_persist: bool = False
+
     def on_file_created(self, event):
-        """Handle new files."""
-        file_path = Path(event.src_path)
-        size = file_path.stat().st_size if file_path.exists() else 0
+        src = Path(event.src_path)
+        size = src.stat().st_size if src.exists() else 0
+        print(f"📄 Created: {src.name} ({size} bytes)")
 
-        # Record already emitted by parent class
-        print(f"📄 Created: {file_path.name} ({size} bytes)")
-
-    @Eventic.step()
     def on_file_modified(self, event):
-        """Handle file modifications."""
         print(f"📝 Modified: {Path(event.src_path).name}")
 
-    @Eventic.step()
     def on_file_deleted(self, event):
-        """Handle file deletions."""
         print(f"🗑️  Deleted: {Path(event.src_path).name}")
 
-    @Eventic.step()
+    def on_file_moved(self, event):
+        print(f"➡️  Moved: {Path(event.src_path).name} → {Path(event.dest_path).name}")
+
     def on_start(self):
-        """Called when monitoring starts."""
         print(f"Started monitoring: {self._watch_path}")
 
 
 def main():
     """Run the file monitoring demo."""
     print("🚀 File Monitor Demo")
-    print("Watching current directory for documents...")
+    print("Watching the current directory for documents...")
     print("Press Ctrl+C to stop\n")
 
-    watcher = DocumentEvent(
-        path="/home/andrew/Documents/Projects/observantic", event_type="modified"
-    )
-    watcher.start_watching("/home/andrew/Documents/Projects/observantic")
+    watcher = DocumentEvent()
+    watcher.start_watching(".")
 
     try:
         while True:

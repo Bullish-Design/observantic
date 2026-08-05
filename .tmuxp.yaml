@@ -6,7 +6,7 @@ windows:
       main-pane-width: 20%
     panes:
       - shell_command:
-          - cd ~/Documents/Notes/Projects/observantic
+          - cd ~/Documents/Projects/observantic
           # - nvim Notes.md ToDo.md
           - open-project
       - shell_command:

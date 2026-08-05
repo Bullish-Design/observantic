@@ -8,7 +8,7 @@
 # ///
 """
 Webhook server example for Observantic.
-Demonstrates receiving HTTP POST webhooks.
+Receives HTTP POST/PUT webhooks and prints them; ships with an auth demo.
 """
 
 from __future__ import annotations
@@ -19,25 +19,26 @@ import time
 
 import requests
 from eventic import Record
-from observantic import WebhookEventBase, init
 
-
-# Initialize Eventic
-init(name="webhook-demo", database_url="postgresql://user:pass@localhost/demo")
+from observantic import WebhookEventBase
 
 
 class WebhookEvent(Record, WebhookEventBase):
-    """Receive webhooks and store as Records."""
+    """Receive webhooks; each request emits an instance of this Record."""
 
-    endpoint: str
-    payload: dict | str
-    timestamp: float
+    # Eventic Record fields (defaults so no store/DB is required).
+    endpoint: str = ""
+    payload: dict | str = {}
+    timestamp: float = 0.0
 
-    # Configure server
-    port = 8888
-    webhook_paths = ["/webhook", "/api/event"]
-    require_auth_header = "X-API-Key"
-    require_auth_value = "secret-123"
+    # Configure server — annotated overrides (C-02).
+    port: int = 8888
+    webhook_paths: list[str] = ["/webhook", "/api/event"]
+    require_auth_header: str | None = "X-API-Key"
+    require_auth_value: str | None = "secret-123"
+
+    # Persistence is opt-in (see README "Persistence").
+    auto_persist: bool = False
 
     def on_webhook_received(self, event):
         """Process received webhook."""

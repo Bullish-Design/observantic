@@ -1,7 +1,11 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "observantic"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.2.0"
+description = "Bridges external events (files, SQLite, webhooks) to Eventic Records through customizable hooks"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -12,9 +16,19 @@ dependencies = [
 ]
 
 [project.scripts]
-#eventic-example = "examples.demo:main"
 start = "examples.webhook_server:main"
 
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "requests>=2.31",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
 
 [tool.uv.sources]
 eventic = { git = "https://github.com/Bullish-Design/eventic.git" }
@@ -23,4 +37,18 @@ confidantic = { git = "https://github.com/Bullish-Design/confidantic.git" }
 [tool.hatch.build.targets.wheel]
 packages = ["src/observantic", "src/examples"]
 
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+src = ["src", "tests"]
+extend-exclude = [".scratch", ".devenv", ".venv", "uv.lock"]
 
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+ignore = ["E501", "B008", "UP017"]  # B008: typer.Option(...) defaults; UP017: mypy's typeshed lacks datetime.UTC
+
+[tool.mypy]
+python_version = "3.13"
+plugins = ["pydantic.mypy"]
+ignore_missing_imports = true
+files = ["src/observantic"]
