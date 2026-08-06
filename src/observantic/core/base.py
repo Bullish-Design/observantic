@@ -31,6 +31,13 @@ from ..exceptions import ConfigurationException, WatcherException
 
 logger = logging.getLogger("observantic")
 
+# eventic's SQLite(":memory:") store shares one connection across threads
+# (StaticPool + check_same_thread=False) and is not safe under concurrent
+# create() calls from observer threads. Serialize all observantic persists
+# process-wide; the lock is a no-op for file-based SQLite (QueuePool + WAL)
+# and Postgres (pooled connections).
+_persist_lock = Lock()
+
 HookFn = Callable[..., Any]
 
 
@@ -231,7 +238,13 @@ class EventWatcher(BaseModel, ABC):
         return state
 
     def _persist(self, state: Any) -> None:
-        """Commit one emitted state to the bound Collection."""
+        """Commit one emitted state to the bound Collection.
+
+        Writes are serialized process-wide (see ``_persist_lock``). Store
+        failures are reported via ``on_error`` and swallowed unless
+        ``persist_strict`` is set — persistence is best-effort and the
+        observer thread must never die (C-04).
+        """
         if self._collection is None:
             if self.persist_strict:
                 raise ConfigurationException(
@@ -242,7 +255,27 @@ class EventWatcher(BaseModel, ABC):
                 "auto_persist=True but watcher is not bound; state not persisted"
             )
             return
-        self._collection.create(state)
+        with _persist_lock:
+            try:
+                self._collection.create(state)
+            except Exception as e:
+                if self.persist_strict:
+                    raise
+                logger.warning("persist failed (state not committed): %s", e)
+                self._safe_call("on_error", e, state)
+
+    def _emit_safe(self, event: Any, **fields: Any) -> Any | None:
+        """Emit from an observer thread; NEVER raises (C-04).
+
+        Model or persistence errors route to ``on_error(error, event)`` and
+        monitoring continues. Direct ``_emit`` calls still raise, so tests
+        and caller code keep loud semantics.
+        """
+        try:
+            return self._emit(**fields)
+        except Exception as e:
+            self._safe_call("on_error", e, event)
+            return None
 
     def _default_record_model(self) -> type[Any]:
         """Return the monitor's internal state model (subclass contract)."""

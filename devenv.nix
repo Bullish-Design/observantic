@@ -69,7 +69,7 @@
   # Tests run on SQLite by default (eventic 1.1.0 backend). The devenv
   # Postgres at 127.0.0.1:5432 (db "eventic", user/pass postgres/postgres)
   # is available for optional Postgres integration tests:
-  #   TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/eventic \
+  #   TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5432/eventic \
   #     uv run pytest tests/test_postgres_integration.py
   enterTest = ''
     echo "Running tests"

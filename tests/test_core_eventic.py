@@ -10,7 +10,7 @@ import logging
 
 import pytest
 from eventic import App, Stream
-from eventic.errors import NotFound, RevisionConflict
+from eventic.errors import NotFound, RevisionConflict, StoreError
 from eventic.sql import SQLite
 from pydantic import BaseModel, ValidationError
 
@@ -250,3 +250,139 @@ def test_unbind_stops_persistence():
             w._emit(path="/b", event_type="created", is_directory=False)
     finally:
         store.close()
+
+
+# ---------------------------------------------------------------------------
+# v0.4.0 hardening: error routing, serialized writes, psycopg3 URLs
+# ---------------------------------------------------------------------------
+
+
+def test_persist_error_reports_to_on_error_when_not_strict():
+    store = SQLite(":memory:")
+    try:
+        runtime = App(id="t", streams=[PROBE_STREAM]).bind(store)
+        errors = []
+
+        class W(EmittingWatcher):
+            def on_error(self, error, event=None):
+                errors.append((error, event))
+
+        w = W(auto_persist=True)
+        w.bind(runtime)
+
+        def _boom(*args, **kwargs):
+            raise StoreError("boom")
+
+        w._collection.create = _boom
+        state = w._emit(path="/a", event_type="created", is_directory=False)
+        assert state is not None  # emit still returns the state
+        assert len(errors) == 1
+        assert isinstance(errors[0][0], StoreError)
+        assert errors[0][1] is state  # on_error receives the state
+    finally:
+        store.close()
+
+
+def test_persist_error_reraises_when_strict():
+    store = SQLite(":memory:")
+    try:
+        runtime = App(id="t", streams=[PROBE_STREAM]).bind(store)
+        w = EmittingWatcher(auto_persist=True, persist_strict=True)
+        w.bind(runtime)
+
+        def _boom(*args, **kwargs):
+            raise StoreError("boom")
+
+        w._collection.create = _boom
+        with pytest.raises(StoreError):
+            w._emit(path="/a", event_type="created", is_directory=False)
+    finally:
+        store.close()
+
+
+def test_emit_safe_routes_errors_to_on_error_and_returns_none():
+    errors = []
+
+    class W(EmittingWatcher):
+        stream: Stream | None = STRICT_STREAM  # bogus kwarg -> ValidationError
+
+        def on_error(self, error, event=None):
+            errors.append((error, event))
+
+    w = W()
+    event = object()
+    state = w._emit_safe(event, bogus=1)
+    assert state is None
+    assert len(errors) == 1
+    assert isinstance(errors[0][0], ValidationError)
+    assert errors[0][1] is event
+
+
+def test_concurrent_emits_on_memory_store_are_serialized():
+    import threading
+
+    store = SQLite(":memory:")
+    try:
+        runtime = App(id="t", streams=[PROBE_STREAM]).bind(store)
+        watchers = [EmittingWatcher(auto_persist=True) for _ in range(4)]
+        for w in watchers:
+            w.bind(runtime)
+        errors = []
+
+        def worker(w, prefix):
+            for i in range(25):
+                try:
+                    w._emit(path=f"{prefix}-{i}", event_type="created")
+                except Exception as e:
+                    errors.append(e)
+
+        threads = [
+            threading.Thread(target=worker, args=(w, f"t{t}"))
+            for t, w in enumerate(watchers)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert errors == []
+        assert len(runtime[PROBE_STREAM].where(limit=1000).items) == 100
+    finally:
+        store.close()
+
+
+def test_make_store_translates_bare_postgres_url_to_psycopg3(monkeypatch):
+    import eventic.sql as sq
+
+    captured = {}
+
+    class StubPostgres:
+        def __init__(self, url, *, create_tables=True):
+            captured["url"] = url
+            captured["create_tables"] = create_tables
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(sq, "Postgres", StubPostgres)
+    store = make_store("postgresql://u:p@h/db")
+    assert captured["url"] == "postgresql+psycopg://u:p@h/db"
+    assert captured["create_tables"] is True
+    store.close()
+
+
+def test_make_store_keeps_explicit_psycopg_dialect(monkeypatch):
+    import eventic.sql as sq
+
+    captured = {}
+
+    class StubPostgres:
+        def __init__(self, url, *, create_tables=True):
+            captured["url"] = url
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(sq, "Postgres", StubPostgres)
+    store = make_store("postgresql+psycopg://u:p@h/db")
+    assert captured["url"] == "postgresql+psycopg://u:p@h/db"
+    store.close()

@@ -9,7 +9,9 @@ Contract with Eventic 1.1.0 (the rewritten, declaration-based release):
 * ``App.bind(store)`` returns a ``Runtime``; all writes go through
   ``runtime[stream]`` (a ``Collection``) with compare-and-swap (I5, I7).
 * Stores: ``eventic.sql.SQLite`` (dev/test) and ``eventic.sql.Postgres``
-  (production). ``Store.close()`` is idempotent.
+  (production). Bare ``postgresql://`` URLs are translated to
+  ``postgresql+psycopg://`` (eventic's ``[postgres]`` extra ships psycopg3).
+  ``Store.close()`` is idempotent.
 * Delivery: ``Inline`` (best-effort, in-process) or ``Outbox`` (durable,
   drained by ``eventic worker`` / ``eventic.worker.Worker``).
 """
@@ -50,6 +52,11 @@ def make_store(url_or_path: str | None = None, *, create_tables: bool = True) ->
         if url.startswith("postgresql"):
             from eventic.sql import Postgres
 
+            if url.startswith("postgresql://"):
+                # SQLAlchemy's bare postgresql:// dialect defaults to
+                # psycopg2, but eventic's [postgres] extra ships psycopg3
+                # (psycopg[binary]). Translate so the documented URL works.
+                url = "postgresql+psycopg" + url[len("postgresql") :]
             return Postgres(url, create_tables=create_tables)
         if url.startswith("sqlite"):
             from eventic.sql import SQLite

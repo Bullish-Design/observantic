@@ -128,7 +128,8 @@ class FileEventBase(EventWatcher):
                 if not event.is_directory and not parent._should_throttle(
                     str(event.src_path)
                 ):
-                    parent._emit(
+                    parent._emit_safe(
+                        event,
                         path=str(Path(str(event.src_path)).resolve()),
                         event_type="created",
                         is_directory=event.is_directory,
@@ -139,7 +140,8 @@ class FileEventBase(EventWatcher):
                 if not event.is_directory and not parent._should_throttle(
                     str(event.src_path)
                 ):
-                    parent._emit(
+                    parent._emit_safe(
+                        event,
                         path=str(Path(str(event.src_path)).resolve()),
                         event_type="modified",
                         is_directory=event.is_directory,
@@ -148,7 +150,8 @@ class FileEventBase(EventWatcher):
 
             def on_deleted(self, event: FileDeletedEvent) -> None:  # type: ignore[override]
                 if not event.is_directory:
-                    parent._emit(
+                    parent._emit_safe(
+                        event,
                         path=str(Path(str(event.src_path)).resolve()),
                         event_type="deleted",
                         is_directory=event.is_directory,
@@ -159,7 +162,8 @@ class FileEventBase(EventWatcher):
                 if not event.is_directory and not parent._should_throttle(
                     str(event.src_path)
                 ):
-                    parent._emit(
+                    parent._emit_safe(
+                        event,
                         path=str(Path(str(event.src_path)).resolve()),
                         event_type="moved",
                         is_directory=event.is_directory,

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
 # dependencies = [
-#     "observantic>=0.3.0",
+#     "observantic>=0.4.0",
 #     "eventic>=1.1.0",
 #     "requests>=2.31.0",
 #     "typer>=0.12.0",

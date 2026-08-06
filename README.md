@@ -41,10 +41,10 @@ watcher = DocumentWatcher(stream=files)
 watcher.start_watching("/documents")
 watcher.stop_watching()
 
-# Persistence is explicit: bind a store, opt in per watcher
+# Persistence is explicit: bind a store, opt in at construction
 store = SQLite("observantic.db")
+watcher = DocumentWatcher(stream=files, auto_persist=True)
 watcher.bind(app.bind(store))
-watcher.auto_persist = True
 watcher.start_watching("/documents")
 ```
 
@@ -75,6 +75,10 @@ watcher.start_watching("/documents", recursive=True)
 
 Hooks: `on_file_created`, `on_file_modified`, `on_file_deleted`,
 `on_file_moved`, plus lifecycle `on_start` / `on_stop` / `on_error`.
+
+> **Subclassing note**: overriding the default `stream` field requires the
+> annotated form — `stream: Stream = my_stream` — because pydantic rejects
+> non-annotated overrides of base-class fields (pydantic ≥ 2.11).
 
 ### SQLiteEventBase
 
@@ -152,7 +156,8 @@ OBSERVANTIC_LOG_LEVEL=DEBUG
 backward-compatible aliases. When both spellings are set, the
 `OBSERVANTIC_`-prefixed variable wins. The default is
 `sqlite:///observantic.db` (SQLite for dev/test; use `postgresql://` in
-production).
+production — `make_store` translates it to the psycopg3 driver that
+`eventic[postgres]` installs).
 
 ```python
 from observantic import settings
@@ -205,9 +210,16 @@ watcher.start_watching("/documents")
   base. Reads: `get(id)`, `get(id, revision=n)`, `history(id)`,
   `where(**filters)`.
 * **Backends**: `SQLite` for dev/test/single-process; `Postgres` for
-  production (`pip install eventic[postgres]`). Schema is created
-  automatically by `SQLite`; for Postgres run
-  `eventic --app myapp:app --url "$DATABASE_URL" schema upgrade`.
+  production (`pip install eventic[postgres]` — ships the psycopg3 driver,
+  and `make_store` translates bare `postgresql://` URLs automatically).
+  Schema is created automatically by both backends (`create_tables=True`
+  default). `eventic schema upgrade` (Alembic) is Postgres-only and
+  currently unavailable: eventic v1.1.0's wheel omits its `alembic.ini`
+  (untracked upstream). `eventic schema check` / `verify` work on SQLite.
+* **Writes are serialized**: concurrent emits from observer threads (webhook
+  requests, watchdog handlers) are committed one at a time — eventic's
+  `SQLite(":memory:")` store shares a single connection and is not safe
+  under parallel `create()` calls.
 * **Delivery**: hooks are in-process and best-effort. For durable delivery
   declare `Subscription`s (`Inline()` or `Outbox(queue=...)`) on the App and
   run `eventic worker --queue q`. Outbox is at-least-once — handlers must be
@@ -219,6 +231,13 @@ watcher.start_watching("/documents")
   `Record`-based watchers, `@on.create`, `auto_persist` re-appends, DBOS
   queues. Data written by 0.2.0/eventic 0.1.5 is **not readable** by 0.3.0 —
   re-ingest (greenfield schema).
+* **Changed in 0.4.0**: persistence is best-effort — a failed commit
+  reports via `on_error(error, state)` and monitoring continues
+  (`persist_strict=True` opts back into a loud raise); emits from observer
+  threads never kill the monitor (`_emit_safe`); bare `postgresql://` URLs
+  are translated to the psycopg3 driver (`postgresql+psycopg://`); a
+  committed outbox/worker test and an opt-in Postgres integration test are
+  included.
 
 ## Hook Registration
 
@@ -256,7 +275,10 @@ class SafeWatcher(FileEventBase):
 
 Set `raise_on_hook_error=True` to collect hook errors instead of swallowing
 them (`_dispatch_hook` returns the last error; the webhook monitor uses this
-to answer `500` on hook failure).
+to answer `500` on hook failure). Persistence failures are handled the same
+way: with the default `persist_strict=False` a failed commit reports via
+`on_error(error, state)` and the watcher keeps running; `persist_strict=True`
+raises instead (e.g. the webhook monitor answers 500).
 
 Validation happens up front: `start_watching` with a bad path, missing
 database, or inconsistent auth config raises a typed

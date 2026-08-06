@@ -235,7 +235,8 @@ class SQLiteEventBase(EventWatcher):
         row = DatabaseRow(
             table_name=table, row_data=row_data, row_id=rid, operation=operation
         )
-        self._emit(
+        self._emit_safe(
+            row,
             table_name=table,
             row_data=row_data,
             row_id=rid,
@@ -305,6 +306,10 @@ class SQLiteEventBase(EventWatcher):
             def on_modified(self, event: FileModifiedEvent) -> None:  # type: ignore[override]
                 if not event.is_directory:
                     if str(Path(str(event.src_path)).resolve()) == parent._db_path:
-                        parent._check_for_changes()
+                        try:
+                            parent._check_for_changes()
+                        except Exception as e:
+                            # never kill the observer thread (C-04)
+                            parent._safe_call("on_error", e, event)
 
         return SQLiteHandler()

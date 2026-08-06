@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "observantic"
-version = "0.3.0"
+version = "0.4.0"
 description = "Bridges external events (files, SQLite, webhooks) to eventic streams through customizable hooks"
 readme = "README.md"
 requires-python = ">=3.13"
