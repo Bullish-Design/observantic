@@ -22,6 +22,7 @@ from watchdog.events import FileModifiedEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 from watchdog.observers.api import BaseObserver
 
+from .._eventic import persist_row
 from ..core import EventWatcher
 from ..exceptions import ConfigurationException, WatcherException
 
@@ -72,6 +73,16 @@ class SQLiteEventBase(EventWatcher):
     max_table_rows: int = Field(
         default=100_000,
         description="Skip snapshotting tables with more rows than this",
+    )
+    key_aggregates: bool = Field(
+        default=False,
+        description=(
+            "Key row events to stable aggregates (one revision history per "
+            "row): inserts -> create, updates/deletes -> replace on the head. "
+            "Aggregate id is uuid5(NAMESPACE_URL, "
+            "'observantic:sqlite:{table}:{row_id}'). Default False: every "
+            "event is a fresh aggregate (revision 0)."
+        ),
     )
 
     _observer: BaseObserver | None = PrivateAttr(default=None)
@@ -131,6 +142,23 @@ class SQLiteEventBase(EventWatcher):
 
     def _default_record_model(self) -> type[Any]:
         return DatabaseRow
+
+    # ---- keyed-aggregate persistence -------------------------------------- #
+
+    def _persist(self, state: Any) -> None:
+        """Commit one emitted row state; keyed mode derives the aggregate id.
+
+        Writes still go through the base ``_commit`` guard (serialized +
+        on_error routing); only the *target* differs: keyed mode calls
+        ``persist_row`` (create/replace on a stable aggregate) instead of a
+        plain ``create``.
+        """
+        if self._collection is None or not self.key_aggregates:
+            return super()._persist(state)
+        self._commit(
+            state,
+            lambda col: persist_row(col, state, keyed=True),
+        )
 
     # ---- polling --------------------------------------------------------- #
 

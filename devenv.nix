@@ -40,7 +40,7 @@
     listen_addresses = "127.0.0.1";
     port = 5432;
     settings = { 
-      unix_socket_directories = "/run/user/1000/devenv-11f13c9/postgres";
+      unix_socket_directories = "/tmp";
       };
     };
 

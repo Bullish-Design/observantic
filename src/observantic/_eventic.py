@@ -21,8 +21,11 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from typing import Any
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from eventic import App, NoMeta, Stream
+from eventic.errors import NotFound, RevisionConflict
+from eventic.runtime import Collection
 from eventic.subscription import Subscription
 
 from .config import DB_URL as DEFAULT_DB_URL
@@ -34,6 +37,8 @@ __all__ = [
     "DEFAULT_DB_URL",
     "build_app",
     "make_store",
+    "persist_row",
+    "sqlite_aggregate_key",
 ]
 
 
@@ -101,3 +106,43 @@ def build_app(
         meta=meta,
         on_inline_error=on_inline_error,
     )
+
+
+def sqlite_aggregate_key(table: str, row_id: int | str | None) -> UUID:
+    """Deterministic aggregate id for one SQLite row.
+
+    ``uuid5(NAMESPACE_URL, f"observantic:sqlite:{table}:{row_id}")`` — stable
+    across processes and restarts, so updates and deletes append to the same
+    aggregate (durable revision history per row).
+    """
+    return uuid5(NAMESPACE_URL, f"observantic:sqlite:{table}:{row_id}")
+
+
+def persist_row(collection: Collection[Any], state: Any, *, keyed: bool) -> None:
+    """Commit one emitted row state through the collection.
+
+    ``keyed=False`` (legacy): every event is a fresh aggregate (revision 0).
+    ``keyed=True``: inserts -> ``create(state, id=key)``; updates and deletes
+    -> ``replace`` on the head (delete states are already tombstones:
+    ``row_data=None``, ``operation="deleted"``). Rowid reuse after a delete
+    falls back to replace on the existing aggregate; a pre-existing row that
+    was never emitted (first snapshot) creates on first change/delete.
+    """
+    if not keyed:
+        collection.create(state)
+        return
+    key = sqlite_aggregate_key(
+        getattr(state, "table_name", ""), getattr(state, "row_id", None)
+    )
+    if getattr(state, "operation", "inserted") == "inserted":
+        try:
+            collection.create(state, id=key)
+        except RevisionConflict:
+            collection.replace(collection.get(key), state)  # rowid reused
+        return
+    try:
+        head = collection.get(key)
+    except NotFound:
+        collection.create(state, id=key)  # row pre-existed at start
+        return
+    collection.replace(head, state)

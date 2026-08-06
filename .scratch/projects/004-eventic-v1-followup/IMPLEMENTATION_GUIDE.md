@@ -12,6 +12,35 @@ Hardening pass on top of project 003 (`align/eventic-v1.1.0`, commit
   `uv build` succeeds, `eventic --app examples.demo_app:app ... inspect`
   prints `files`/`sqlite`/`webhooks`.
 
+## Reconciliation with `IMPLEMENTATION_GUIDE.0.3.0-plan.md` (final shape)
+
+This guide's original hardening steps (P1–P9 below) were later reconciled
+with the 0.3.0 follow-up plan that arrived via the merge (`5f0f34d`). The
+final released shape is **v0.3.0** and includes, on top of the steps below:
+
+- **eventic pinned to v1.1.1** (released during this project): ships
+  `alembic.ini` — `eventic schema upgrade` now works with **no shim**
+  (Step 4 was upgraded from "document the gap" to "land the fix upstream
+  and pin").
+- **`SQLite(":memory:")` concurrency fixed at the root cause in eventic**
+  (`_SerializedStaticPool` in eventic v1.1.1, with a regression test in
+  eventic's suite). Observantic keeps `_persist_lock` as defense-in-depth
+  for older eventic pins.
+- **`SQLiteEventBase.key_aggregates=True`** (from the plan, deferred from
+  003 OVERVIEW §7.7): per-row revision history via stable `uuid5`
+  aggregates. Reconciled with P1/P2 — the keyed path goes through the base
+  `_commit` guard, so it is serialized and routes failures to `on_error`.
+- **`start` console script fixed** (`examples.webhook_server:app`; the old
+  `main` target never applied `typer.Option` defaults).
+- **devenv Postgres fixed** (`unix_socket_directories = "/tmp"`; the stale
+  `devenv-11f13c9` hardcode killed the service at startup).
+- **Postgres integration test expanded** to the plan's 4 public-API tests.
+- **Version framed as 0.3.0** (the 003 alignment was never released).
+
+The remainder of this guide documents the original hardening evidence and
+steps; the plan's own guide (`IMPLEMENTATION_GUIDE.0.3.0-plan.md`) has the
+full keyed-aggregate / release detail.
+
 ## The five findings driving this project
 
 - **F1 — `:memory:` SQLite corrupts under concurrency.** eventic's
@@ -267,36 +296,29 @@ service socket is not visible and the listener on :5432 rejects known
 credentials), so the translation is unit-tested with a stub (Step 6) and the
 real round-trip lives in the opt-in integration test (Step 8).
 
-## Step 4 — Document the migration gap (F3)
+## Step 4 — Land the migration fix upstream and pin v1.1.1 (F3)
 
-**File: `src/examples/demo_app.py`** — replace the docstring:
+The original 004 plan documented this gap as blocked; the reconciled
+solution fixes it properly.
 
-```python
-"""A ready-to-run eventic App over observantic's default streams.
+In the eventic repo, the `alembic.ini` packaging fix was already committed
+(`f72d752`, un-ignored + tracked). This project added the
+`_SerializedStaticPool` concurrency fix, bumped eventic to **1.1.1**, and
+tagged/pushed `v1.1.1`. Observantic then pins the tag:
 
-Use it with the eventic CLI, e.g.:
+**File: `pyproject.toml`**
 
-    uv run eventic --app examples.demo_app:app --url sqlite:///demo.db inspect
-    uv run eventic --app examples.demo_app:app --url sqlite:///demo.db verify
-
-``schema upgrade`` (Alembic) is for Postgres production only. eventic
-v1.1.0's wheel omits its alembic.ini (untracked upstream), so the CLI
-command fails until upstream ships a fix; prefer ``Postgres(url)`` with the
-default ``create_tables=True`` for Postgres bootstrapping. SQLite creates
-its tables automatically on store construction.
-"""
+```toml
+[tool.uv.sources]
+eventic = { git = "https://github.com/Bullish-Design/eventic.git", tag = "v1.1.1" }
 ```
 
-**File: `README.md`** — Persistence/backends paragraph:
-
-```markdown
-* **Backends**: `SQLite` for dev/test/single-process; `Postgres` for
-  production (`pip install eventic[postgres]` — ships the psycopg3 driver,
-  and `make_store` translates bare `postgresql://` URLs automatically).
-  Schema is created automatically by both backends (`create_tables=True`
-  default). `eventic schema upgrade` (Alembic) is Postgres-only and
-  currently unavailable: eventic v1.1.0's wheel omits its `alembic.ini`
-  (untracked upstream). `eventic schema check` / `verify` work on SQLite.
+```bash
+uv lock && uv sync --group dev
+uv run python -c "import eventic; print(eventic.__version__)"   # 1.1.1
+uv run eventic --app examples.demo_app:app --url sqlite:///demo.db schema upgrade
+# INFO [alembic.runtime.migration] Running upgrade -> 0001, baseline
+# schema upgraded
 ```
 
 ## Step 5 — examples package + version bump
@@ -312,8 +334,8 @@ its tables automatically on store construction.
 from __future__ import annotations
 ```
 
-**File: `pyproject.toml`** — `version = "0.4.0"`.
-**File: `src/observantic/__init__.py`** — `__version__ = "0.4.0"`.
+**File: `pyproject.toml`** — `version = "0.3.0"`.
+**File: `src/observantic/__init__.py`** — `__version__ = "0.3.0"`.
 
 ## Step 6 — Tests
 
@@ -527,7 +549,7 @@ def test_outbox_worker_delivers_persisted_commits(tmp_path):
 
 ### 6.3 `tests/test_public_api.py` — version bump
 
-`test_version_consistent_with_metadata`: `"0.3.0"` → `"0.4.0"` (both
+`test_version_consistent_with_metadata`: `"0.3.0"` → `"0.3.0"` (reverted: the release is 0.3.0) (both
 occurrences).
 
 ### 6.4 `tests/test_postgres_integration.py` (new, opt-in)
@@ -619,7 +641,7 @@ watcher.start_watching("/documents")
 - **Config**: note that `make_store` accepts `postgresql://` and
   `postgresql+psycopg://` (bare URLs are translated to the psycopg3 driver
   that `eventic[postgres]` installs).
-- Add a **0.4.0** release-notes block: serialized/safe persistence writes,
+- Add a **0.3.0** release-notes block: serialized/safe persistence writes,
   observer-thread error routing (`on_error`), `_emit_safe`, psycopg3 URL
   translation, outbox/worker test, opt-in Postgres integration tests.
 
@@ -656,19 +678,24 @@ checks `src/observantic`).
 
 ```bash
 git add -A
-git commit -m "harden eventic 1.1.0 followup (v0.4.0)
+git commit -m "release 0.3.0: eventic v1.1.1 followup
 
 - serialize persistence writes; eventic :memory: SQLite (StaticPool) is
-  unsafe under concurrent create() from observer threads (F1)
+  unsafe under concurrent create() from observer threads (F1); root cause
+  also fixed upstream (eventic v1.1.1 _SerializedStaticPool)
 - observer-thread safety: _persist routes store errors to on_error unless
   persist_strict; monitors emit via _emit_safe so a raise never kills the
   watchdog observer thread (F2, C-04)
 - make_store translates bare postgresql:// to postgresql+psycopg://
   (eventic[postgres] ships psycopg3) (F4)
-- document schema upgrade gap: eventic v1.1.0 wheel omits alembic.ini (F3)
+- pin eventic v1.1.1 (ships alembic.ini) — schema upgrade works (F3)
+- SQLiteEventBase.key_aggregates: per-row revision history (keyed
+  aggregates), reconciled with the persist-lock/on_error guards
+- fix start console script (examples.webhook_server:app) and devenv
+  Postgres socket dir
 - examples is now a regular package (__init__.py)
-- add outbox/worker delivery test and opt-in Postgres integration test
-- bump to 0.4.0; README/release notes
+- add outbox/worker test, 8 keyed-aggregate tests, 4-test Postgres
+  integration suite (TEST_DATABASE_URL-gated, validated live)
 "
 ```
 
@@ -690,21 +717,28 @@ git commit -m "harden eventic 1.1.0 followup (v0.4.0)
 
 ## Appendix B — Verification checklist (004)
 
-- [ ] concurrency probe (Step 1): 200/200 persisted, 0 errors on `:memory:`
-- [ ] `uv run pytest -q` → all green (incl. new outbox + persistence tests)
-- [ ] `uv run ruff check . && uv run ruff format --check .` → clean
-- [ ] `uv run mypy src/observantic` → clean
-- [ ] `uv build --no-sources` → wheel contains `examples/__init__.py` + the
+- [x] concurrency probe: 200/200 persisted, 0 errors on `:memory:` (pure
+      eventic v1.1.1 and through observantic)
+- [x] `uv run pytest -q` → all green (incl. outbox, persistence, and the 8
+      keyed-aggregate tests)
+- [x] `uv run ruff check . && uv run ruff format --check .` → clean
+- [x] `uv run mypy src/observantic` → clean
+- [x] `uv build --no-sources` → wheel contains `examples/__init__.py` + the
       five example modules and the `start` entry point
-- [ ] `uv run eventic --app examples.demo_app:app --url sqlite:///demo.db
+- [x] `uv run eventic --app examples.demo_app:app --url sqlite:///demo.db
       inspect` prints `files`/`sqlite`/`webhooks`
-- [ ] `uv run eventic --app examples.demo_app:app --url sqlite:///demo.db
+- [x] `uv run eventic --app examples.demo_app:app --url sqlite:///demo.db
+      schema upgrade` works (eventic v1.1.1 ships `alembic.ini`)
+- [x] `uv run eventic --app examples.demo_app:app --url sqlite:///demo.db
       verify` → `verified 0 revisions ... 0 mismatches`
-- [ ] Postgres integration test exists and skips cleanly without
-      `TEST_DATABASE_URL`
-- [ ] README quick start uses `auto_persist=True` at construction; the
+- [x] Postgres integration test (4 tests) skips cleanly without
+      `TEST_DATABASE_URL`; runs against a live Postgres with the env var
+- [x] `uv run start --help` renders the typer CLI (entry point fix)
+- [x] keyed aggregates: insert/update/delete produce one aggregate with
+      history `[0, 1, 2]`; rowid reuse and pre-existing rows don't error
+- [x] README quick start uses `auto_persist=True` at construction; the
       subclass `stream: Stream = ...` annotation is documented
-- [ ] no lingering `0.3.0` version strings outside `.scratch/` history
+- [x] no lingering `0.4.0` version strings (release framed as 0.3.0)
 
 ## Appendix C — Corrections to project 003
 
@@ -715,7 +749,8 @@ git commit -m "harden eventic 1.1.0 followup (v0.4.0)
 - **Step 11 watcher smoke**: the subclass must annotate the stream override —
   `stream: Stream = s` — or pydantic ≥ 2.11 raises `PydanticUserError`.
 - **Step 11 `schema upgrade`**: fails on the v1.1.0 wheel (`alembic.ini`
-  missing); use `inspect`/`verify` for SQLite verification (F3).
+  missing); fixed by pinning eventic **v1.1.1** (ships `alembic.ini`). Use
+  `inspect`/`verify` for SQLite verification (F3).
 - **`where()` page size**: `Collection.where(limit=...)` defaults to 100 —
   count assertions must pass `limit=1000` (or page).
 - **Step 11 watcher smoke, assertion**: `where(path="hello.txt")` is an

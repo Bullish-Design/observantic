@@ -111,6 +111,19 @@ compatibility: it fires once per check with all rows inserted since the last
 check. Change detection is snapshot-based (per-table `{rowid: cells}` diffs);
 there is no `PRAGMA data_version` gate.
 
+### SQLiteEventBase — keyed aggregates (opt-in)
+
+By default every row event is a fresh aggregate (revision 0). Set
+`key_aggregates=True` to give each row a durable revision history: inserts
+`create`, updates and deletes `replace` on a stable aggregate id
+(`uuid5(NAMESPACE_URL, "observantic:sqlite:{table}:{row_id}")`), so
+`collection.history(aggregate_key(table, row_id))` returns the row's full
+lifecycle (insert → update → … → delete tombstone).
+
+```python
+sync = DatabaseSync(stream=rows, auto_persist=True, key_aggregates=True)
+```
+
 ### WebhookEventBase
 
 HTTP webhook server (threaded, bounded):
@@ -155,9 +168,10 @@ OBSERVANTIC_LOG_LEVEL=DEBUG
 `DB_URL` / `LOG_LEVEL` (without the prefix) are accepted as
 backward-compatible aliases. When both spellings are set, the
 `OBSERVANTIC_`-prefixed variable wins. The default is
-`sqlite:///observantic.db` (SQLite for dev/test; use `postgresql://` in
-production — `make_store` translates it to the psycopg3 driver that
-`eventic[postgres]` installs).
+`sqlite:///observantic.db` (SQLite for dev/test; use `postgresql://` or
+`postgresql+psycopg://` in production — `make_store` translates bare
+`postgresql://` URLs to the psycopg3 driver that `eventic[postgres]`
+installs).
 
 ```python
 from observantic import settings
@@ -167,7 +181,7 @@ print(settings.DB_URL)
 
 ## Persistence
 
-Eventic 1.1.0 is a **versioned document store** with declaration-based apps.
+Eventic 1.1.x is a **versioned document store** with declaration-based apps.
 Watchers emit **plain pydantic state** into a **`Stream`**; commits go
 through a **`Collection`** obtained from `app.bind(store)`.
 
@@ -210,12 +224,14 @@ watcher.start_watching("/documents")
   base. Reads: `get(id)`, `get(id, revision=n)`, `history(id)`,
   `where(**filters)`.
 * **Backends**: `SQLite` for dev/test/single-process; `Postgres` for
-  production (`pip install eventic[postgres]` — ships the psycopg3 driver,
-  and `make_store` translates bare `postgresql://` URLs automatically).
-  Schema is created automatically by both backends (`create_tables=True`
-  default). `eventic schema upgrade` (Alembic) is Postgres-only and
-  currently unavailable: eventic v1.1.0's wheel omits its `alembic.ini`
-  (untracked upstream). `eventic schema check` / `verify` work on SQLite.
+  production (`pip install eventic[postgres]` — ships the psycopg3 driver;
+  `make_store` accepts bare `postgresql://` URLs and translates them to the
+  psycopg3 dialect, and `postgresql+psycopg://` works too). Schema is
+  created automatically by both backends (`create_tables=True` default),
+  and `eventic --app myapp:app --url "$DATABASE_URL" schema upgrade`
+  (Alembic) works for Postgres since eventic v1.1.1 (which ships
+  `alembic.ini`; v1.1.0's wheel could not).
+  `eventic schema check` / `verify` work on SQLite.
 * **Writes are serialized**: concurrent emits from observer threads (webhook
   requests, watchdog handlers) are committed one at a time — eventic's
   `SQLite(":memory:")` store shares a single connection and is not safe
@@ -231,13 +247,16 @@ watcher.start_watching("/documents")
   `Record`-based watchers, `@on.create`, `auto_persist` re-appends, DBOS
   queues. Data written by 0.2.0/eventic 0.1.5 is **not readable** by 0.3.0 —
   re-ingest (greenfield schema).
-* **Changed in 0.4.0**: persistence is best-effort — a failed commit
+* **Changed in 0.3.0**: persistence is best-effort — a failed commit
   reports via `on_error(error, state)` and monitoring continues
   (`persist_strict=True` opts back into a loud raise); emits from observer
-  threads never kill the monitor (`_emit_safe`); bare `postgresql://` URLs
-  are translated to the psycopg3 driver (`postgresql+psycopg://`); a
-  committed outbox/worker test and an opt-in Postgres integration test are
-  included.
+  threads never kill the monitor (`_emit_safe`); writes are serialized
+  (eventic `:memory:` stores share one connection); bare `postgresql://`
+  URLs are translated to the psycopg3 driver (`postgresql+psycopg://`);
+  `SQLiteEventBase(key_aggregates=True)` gives each row a durable revision
+  history; the `start` console script runs the typer CLI; eventic is pinned
+  to v1.1.1 (ships `alembic.ini`); committed outbox/worker and opt-in
+  Postgres integration tests are included.
 
 ## Hook Registration
 

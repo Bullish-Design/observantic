@@ -238,13 +238,7 @@ class EventWatcher(BaseModel, ABC):
         return state
 
     def _persist(self, state: Any) -> None:
-        """Commit one emitted state to the bound Collection.
-
-        Writes are serialized process-wide (see ``_persist_lock``). Store
-        failures are reported via ``on_error`` and swallowed unless
-        ``persist_strict`` is set — persistence is best-effort and the
-        observer thread must never die (C-04).
-        """
+        """Commit one emitted state to the bound Collection."""
         if self._collection is None:
             if self.persist_strict:
                 raise ConfigurationException(
@@ -255,9 +249,31 @@ class EventWatcher(BaseModel, ABC):
                 "auto_persist=True but watcher is not bound; state not persisted"
             )
             return
+        self._commit(state)
+
+    def _commit(
+        self,
+        state: Any,
+        op: Callable[[Collection[Any]], Any] | None = None,
+    ) -> None:
+        """Run one collection mutation under the persist lock.
+
+        Every observantic write goes through here: it is serialized
+        process-wide (see ``_persist_lock``) and failures are reported via
+        ``on_error`` and swallowed unless ``persist_strict`` is set —
+        persistence is best-effort and the observer thread must never die
+        (C-04). Subclass persistence (e.g. keyed aggregates) calls this with
+        an ``op`` instead of bypassing the guards.
+        """
+        collection = self._collection
+        if collection is None:
+            return  # defensive: callers guard the unbound case first
         with _persist_lock:
             try:
-                self._collection.create(state)
+                if op is None:
+                    collection.create(state)
+                else:
+                    op(collection)
             except Exception as e:
                 if self.persist_strict:
                     raise

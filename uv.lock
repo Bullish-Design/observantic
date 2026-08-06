@@ -121,8 +121,8 @@ wheels = [
 
 [[package]]
 name = "eventic"
-version = "1.1.0"
-source = { git = "https://github.com/Bullish-Design/eventic.git?tag=v1.1.0#b489da230167b17ec787edef190afa2dce917508" }
+version = "1.1.1"
+source = { git = "https://github.com/Bullish-Design/eventic.git?tag=v1.1.1#7c2fd2408a4eb4338f977066bbcc812a369cf5b0" }
 dependencies = [
     { name = "pydantic" },
     { name = "sqlalchemy" },
@@ -335,7 +335,7 @@ wheels = [
 
 [[package]]
 name = "observantic"
-version = "0.4.0"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "eventic" },
@@ -355,15 +355,15 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "eventic", git = "https://github.com/Bullish-Design/eventic.git?tag=v1.1.0" },
+    { name = "eventic", git = "https://github.com/Bullish-Design/eventic.git?tag=v1.1.1" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "watchdog", specifier = ">=6.0.0" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "eventic", extras = ["migrate"], git = "https://github.com/Bullish-Design/eventic.git?tag=v1.1.0" },
-    { name = "eventic", extras = ["postgres"], git = "https://github.com/Bullish-Design/eventic.git?tag=v1.1.0" },
+    { name = "eventic", extras = ["migrate"], git = "https://github.com/Bullish-Design/eventic.git?tag=v1.1.1" },
+    { name = "eventic", extras = ["postgres"], git = "https://github.com/Bullish-Design/eventic.git?tag=v1.1.1" },
     { name = "mypy", specifier = ">=1.11" },
     { name = "pytest", specifier = ">=8" },
     { name = "requests", specifier = ">=2.31" },

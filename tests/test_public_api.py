@@ -8,7 +8,7 @@ import observantic
 
 
 def test_version_consistent_with_metadata():
-    assert observantic.__version__ == "0.4.0"
+    assert observantic.__version__ == "0.3.0"
     assert importlib.metadata.version("observantic") == observantic.__version__
 
 

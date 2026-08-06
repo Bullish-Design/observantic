@@ -1,25 +1,36 @@
-"""Optional Postgres integration tests (skipped without TEST_DATABASE_URL).
+"""Postgres integration tests (skip unless TEST_DATABASE_URL is set).
 
-Run against the devenv Postgres, e.g.:
+Uses observantic's public API end to end: make_store -> Postgres,
+build_app -> bind -> watcher emit (auto_persist) -> where/get/history, plus
+CAS conflicts and NotFound. Mirrors test_core_eventic on the SQLite backend.
 
-    TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5432/eventic \
-      uv run pytest tests/test_postgres_integration.py
+The URL should use the postgresql+psycopg:// scheme: SQLAlchemy's plain
+postgresql:// defaults to the psycopg2 driver, which eventic[postgres]
+(psycopg 3) does not install. Bare postgresql:// URLs are translated by
+make_store, but the explicit scheme is clearer. See devenv.nix enterTest for
+the devenv Postgres example.
 """
 
 from __future__ import annotations
 
 import os
+from uuid import uuid4
 
 import pytest
-from eventic import App, Stream
+from eventic import Stream
+from eventic.errors import NotFound, RevisionConflict
 from pydantic import BaseModel
 
-from observantic import make_store
+from observantic import EventWatcher, build_app, make_store
 
-URL = os.environ.get("TEST_DATABASE_URL")
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 
 pytestmark = pytest.mark.skipif(
-    not URL, reason="TEST_DATABASE_URL not set (needs a live Postgres)"
+    not TEST_DATABASE_URL,
+    reason=(
+        "TEST_DATABASE_URL not set (e.g. "
+        "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/eventic)"
+    ),
 )
 
 
@@ -31,15 +42,57 @@ class ProbeEvent(BaseModel):
 PROBE_STREAM = Stream(ProbeEvent, name="pg_probe")
 
 
-def test_make_store_roundtrip_on_postgres():
-    store = make_store(URL)
+class EmittingWatcher(EventWatcher):
+    stream: Stream | None = PROBE_STREAM
+
+
+def test_make_store_postgres_and_outbox_capability():
+    store = make_store(TEST_DATABASE_URL)
     try:
-        # bare postgresql:// URLs are translated to the psycopg3 driver
-        assert store.engine.url.drivername == "postgresql+psycopg"
-        runtime = App(id="pg-test", streams=[PROBE_STREAM]).bind(store)
-        runtime[PROBE_STREAM].create(ProbeEvent(path="/pg", event_type="created"))
-        items = runtime[PROBE_STREAM].where(path="/pg").items
-        assert len(items) == 1
-        assert items[0].state.path == "/pg"
+        assert "postgres" in str(store.engine.url)
+        assert store.capabilities.outbox is True
+    finally:
+        store.close()
+
+
+def test_watcher_emit_persists_through_bound_runtime():
+    store = make_store(TEST_DATABASE_URL)
+    try:
+        runtime = build_app(id="pg-t", streams=[PROBE_STREAM]).bind(store)
+        w = EmittingWatcher(auto_persist=True)
+        w.bind(runtime)
+
+        marker = f"/pg/{uuid4()}"  # unique per run: the DB persists across runs
+        w._emit(path=marker, event_type="created", is_directory=False)
+        w._emit(path=marker, event_type="modified", is_directory=False)
+
+        page = runtime[PROBE_STREAM].where(path=marker)
+        assert len(page.items) == 2  # one new aggregate per event
+        assert all(it.revision == 0 for it in page.items)
+    finally:
+        store.close()
+
+
+def test_cas_conflict_on_stale_base():
+    store = make_store(TEST_DATABASE_URL)
+    try:
+        runtime = build_app(id="pg-cas", streams=[PROBE_STREAM]).bind(store)
+        col = runtime[PROBE_STREAM]
+        r0 = col.create(ProbeEvent(path="/cas"))
+        r1 = col.change(r0, path="/cas2")
+        assert r1.revision == 1
+        assert col.get(r0.id, revision=0).state.path == "/cas"
+        with pytest.raises(RevisionConflict):  # stale base (I7)
+            col.change(r0, path="/cas3")
+    finally:
+        store.close()
+
+
+def test_get_missing_raises_not_found():
+    store = make_store(TEST_DATABASE_URL)
+    try:
+        runtime = build_app(id="pg-nf", streams=[PROBE_STREAM]).bind(store)
+        with pytest.raises(NotFound):
+            runtime[PROBE_STREAM].get(uuid4())
     finally:
         store.close()
