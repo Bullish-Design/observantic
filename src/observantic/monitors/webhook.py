@@ -21,6 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qsl, urlparse
 
+from eventic import Stream
 from pydantic import BaseModel, Field, PrivateAttr
 
 from ..core import EventWatcher
@@ -53,6 +54,9 @@ class WebhookRecord(BaseModel):
     source_ip: str = ""
 
     model_config = {"frozen": True, "extra": "forbid", "arbitrary_types_allowed": True}
+
+
+WEBHOOK_STREAM: Stream = Stream(WebhookRecord, name="webhooks")
 
 
 class _ConnectionTrackingMixIn:
@@ -91,6 +95,8 @@ class _WebhookServer(_ConnectionTrackingMixIn, ThreadingHTTPServer):
 
 class WebhookEventBase(EventWatcher):
     """HTTP webhook monitoring mixin."""
+
+    stream: Stream = WEBHOOK_STREAM
 
     port: int = Field(default=8080, description="Port to listen on")
     host: str = Field(default="0.0.0.0", description="Host to bind to")

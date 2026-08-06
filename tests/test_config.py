@@ -7,7 +7,7 @@ from observantic.config import ObservanticSettings, _read_settings
 
 def test_defaults():
     s = ObservanticSettings()
-    assert s.DB_URL == "postgresql://localhost/observantic"
+    assert s.DB_URL == "sqlite:///observantic.db"
     assert s.LOG_LEVEL == "INFO"
 
 
@@ -35,7 +35,7 @@ def test_read_settings_defaults(monkeypatch):
     monkeypatch.delenv("LOG_LEVEL", raising=False)
     values = _read_settings()
     assert values == {
-        "DB_URL": "postgresql://localhost/observantic",
+        "DB_URL": "sqlite:///observantic.db",
         "LOG_LEVEL": "INFO",
     }
 

@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from eventic import Stream
 from pydantic import BaseModel, Field, PrivateAttr
 from watchdog.events import (
     FileCreatedEvent,
@@ -37,8 +38,13 @@ class FileRecord(BaseModel):
     model_config = {"frozen": True, "extra": "forbid"}
 
 
+FILE_STREAM: Stream = Stream(FileRecord, name="files")
+
+
 class FileEventBase(EventWatcher):
     """File system monitoring mixin using watchdog."""
+
+    stream: Stream = FILE_STREAM
 
     watch_patterns: list[str] = Field(
         default=["*"], description="File patterns to monitor (e.g., ['*.pdf', '*.txt'])"

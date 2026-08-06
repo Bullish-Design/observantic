@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 from typing import Any, Literal
 
+from eventic import Stream
 from pydantic import BaseModel, Field, PrivateAttr
 from watchdog.events import FileModifiedEvent, FileSystemEventHandler
 from watchdog.observers import Observer
@@ -39,6 +40,9 @@ class DatabaseRow(BaseModel):
     model_config = {"frozen": True, "extra": "forbid"}
 
 
+SQLITE_STREAM: Stream = Stream(DatabaseRow, name="sqlite")
+
+
 class SchemaChange(BaseModel):
     """A schema-level change (DDL)."""
 
@@ -52,6 +56,8 @@ class SchemaChange(BaseModel):
 
 class SQLiteEventBase(EventWatcher):
     """SQLite database monitoring mixin."""
+
+    stream: Stream = SQLITE_STREAM
 
     poll_interval_seconds: float = Field(
         default=1.0,

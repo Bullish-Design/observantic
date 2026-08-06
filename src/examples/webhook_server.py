@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 # /// script
 # dependencies = [
-#     "observantic @ git+https://github.com/Bullish-Design/observantic",
-#     "eventic @ git+https://github.com/Bullish-Design/eventic",
-#     "python-dotenv>=1.0.0",
+#     "observantic>=0.3.0",
+#     "eventic>=1.1.0",
+#     "requests>=2.31.0",
 #     "typer>=0.12.0",
 # ]
 # ///
 """
 Production webhook server using Observantic.
-Logs all webhooks to JSONL. Persistence to Eventic is optional and enabled
-by calling observantic.init(...) with a reachable database.
+Logs all webhooks to JSONL. Persistence to eventic is optional and enabled
+by binding a store with a reachable database.
 """
 
 from __future__ import annotations
@@ -23,26 +23,31 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import typer
-from eventic import Record
+from eventic import App, Stream
+from pydantic import BaseModel
 
-from observantic import WebhookEventBase, init
+from observantic import WebhookEventBase, make_store
 
 app = typer.Typer()
 
 
-class WebhookLogger(Record, WebhookEventBase):
-    """Production webhook logger with JSONL output.
+class WebhookEvent(BaseModel):
+    """One emitted webhook request (the stream's state model)."""
 
-    All configuration is passed to the constructor (C-07) — never assigned
-    on the class after creation.
-    """
+    path: str = ""
+    method: str = ""
+    headers: dict[str, str] = {}
+    body: bytes | str | dict = b""
+    source_ip: str = ""
 
-    # Eventic Record fields (defaults so no store/DB is required).
-    endpoint: str = "/webhook"
-    payload: dict | str = {}
-    timestamp: float = 0.0
 
-    # WebhookEventBase configuration (annotated overrides).
+webhooks = Stream(WebhookEvent, name="webhooks")
+eventic_app = App(id="webhook-logger", streams=[webhooks])
+
+
+class WebhookLogger(WebhookEventBase):
+    """Production webhook logger with JSONL output."""
+
     port: int = 8000
     host: str = "0.0.0.0"
     webhook_paths: list[str] = ["/webhook", "/api/webhook"]
@@ -50,7 +55,6 @@ class WebhookLogger(Record, WebhookEventBase):
     require_auth_value: str | None = None
     parse_json_body: bool = True
 
-    # Logger configuration — private, set via constructor kwargs.
     _log_file: Path = Path("/data/webhooks.jsonl")
     _request_count: int = 0
 
@@ -171,10 +175,10 @@ def main(
         envvar="WEBHOOK_LOG_FILE",
     ),
     database_url: str = typer.Option(
-        "postgresql://eventic_user:eventic_pass@localhost:5432/eventic_db",
+        "sqlite:///observantic.db",
         "--database-url",
         "-d",
-        help="PostgreSQL database URL",
+        help="Database URL for eventic (sqlite:// or postgresql://)",
         envvar="DATABASE_URL",
     ),
     auth_header: str | None = typer.Option(
@@ -199,16 +203,9 @@ def main(
     """Run production webhook server with Observantic."""
     global server_instance
 
-    # Initialize Eventic (optional). If the database is unreachable the
-    # server still runs — persistence is simply unavailable (auto_persist is
-    # off by default; hooks receive events regardless).
-    try:
-        init(name="webhook-server", database_url=database_url)
-        print(f"🔌 Eventic initialized @ {database_url}")
-    except Exception as e:
-        print(f"⚠️  Eventic unavailable ({e}); persistence disabled")
-
-    # Configure the server entirely via constructor kwargs (C-07).
+    # Persistence is explicit: build a store from --database-url and bind.
+    # If the database is unreachable, the server still runs — persistence
+    # is simply unavailable (auto_persist is off until bind succeeds).
     server_instance = WebhookLogger(
         port=port,
         host=host,
@@ -217,18 +214,22 @@ def main(
         require_auth_header=auth_header,
         require_auth_value=auth_value,
     )
-    # Private attributes are not init kwargs in pydantic 2.11; assign after
-    # construction (private attrs are assignable even on frozen Records).
+    try:
+        store = make_store(database_url)
+        runtime = eventic_app.bind(store)
+        server_instance.bind(runtime)
+        server_instance.auto_persist = True
+        print(f"🔌 eventic store bound @ {database_url}")
+    except Exception as e:
+        print(f"⚠️  eventic unavailable ({e}); persistence disabled")
+        store = None
+
     server_instance._log_file = log_file
 
-    # Setup signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # Start watching (this starts the HTTP server in a background thread)
     server_instance.start_watching()
-
-    # Keep the main thread alive
     try:
         while True:
             time.sleep(1)
@@ -237,6 +238,8 @@ def main(
     finally:
         if server_instance._watching:
             server_instance.stop_watching()
+        if store is not None:
+            store.close()
 
 
 if __name__ == "__main__":

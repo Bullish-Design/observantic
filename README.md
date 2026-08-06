@@ -1,7 +1,7 @@
 # Observantic
 
 Event monitoring library that bridges external events — filesystem changes,
-SQLite row changes, and HTTP webhooks — to Eventic Records through
+SQLite row changes, and HTTP webhooks — to eventic streams through
 customizable hooks.
 
 ## Installation
@@ -13,29 +13,39 @@ uv add observantic
 ## Quick Start
 
 ```python
+from pydantic import BaseModel
+from eventic import App, Stream
+from eventic.sql import SQLite
 from observantic import FileEventBase
-from eventic import Record
 
 
-# Define an event record. Because this watcher subclasses Eventic's `Record`,
-# every event emits an instance of *your* record (see "Persistence").
-class FileEvent(Record, FileEventBase):
+class FileEvent(BaseModel):
     path: str = ""
     event_type: str = ""
+    is_directory: bool = False
 
-    # Class-level configuration must be annotated (pydantic requirement).
+
+files = Stream(FileEvent, name="files")
+app = App(id="my-app", streams=[files])
+
+
+class DocumentWatcher(FileEventBase):
     watch_patterns: list[str] = ["*.pdf", "*.txt"]
 
     def on_file_created(self, event):
         print(f"Created: {event.src_path}")
 
 
-# Monitor files
-watcher = FileEvent()
+# Monitor files (no database required)
+watcher = DocumentWatcher(stream=files)
 watcher.start_watching("/documents")
-
-# Stop when done
 watcher.stop_watching()
+
+# Persistence is explicit: bind a store, opt in per watcher
+store = SQLite("observantic.db")
+watcher.bind(app.bind(store))
+watcher.auto_persist = True
+watcher.start_watching("/documents")
 ```
 
 ## Watchers
@@ -140,7 +150,9 @@ OBSERVANTIC_LOG_LEVEL=DEBUG
 
 `DB_URL` / `LOG_LEVEL` (without the prefix) are accepted as
 backward-compatible aliases. When both spellings are set, the
-`OBSERVANTIC_`-prefixed variable wins.
+`OBSERVANTIC_`-prefixed variable wins. The default is
+`sqlite:///observantic.db` (SQLite for dev/test; use `postgresql://` in
+production).
 
 ```python
 from observantic import settings
@@ -150,55 +162,63 @@ print(settings.DB_URL)
 
 ## Persistence
 
-Persistence is **opt-in and explicit** — the library does not write to
-Eventic unless you initialize it (`init(...)`) and your watcher uses a
-`Record`-based model.
+Eventic 1.1.0 is a **versioned document store** with declaration-based apps.
+Watchers emit **plain pydantic state** into a **`Stream`**; commits go
+through a **`Collection`** obtained from `app.bind(store)`.
 
-* Every watcher constructs an event record per event via `_emit()`. For a
-  `Record`-based watcher this is *your* record subclass; otherwise it is the
-  monitor's internal model (`FileRecord`, `DatabaseRow`, `WebhookRecord`).
-* **Durable v0 (Eventic 0.1.5+):** when a store is wired (`init(...)`),
-  constructing a `Record`-based event record persists its initial version row
-  automatically and fires `@on.create` handlers — no `launch()` needed.
-  Later mutations (in your hooks) write new versions and fire `@on.update`.
-* `auto_persist: bool = False` — when `True`, each emitted record is also
-  explicitly appended to its Eventic store (an idempotent re-append for
-  Record models, thanks to `ON CONFLICT DO NOTHING`).
-* `persist_strict: bool = False` — when `True`, a missing Eventic backend
-  raises `ConfigurationException` instead of logging a warning.
-* The emitted record is returned from `_emit()`; hooks receive the raw event
-  object (watchdog event, `DatabaseRow`, or `WebhookEvent`).
+* Every watcher declares a `stream` whose model is the persisted state
+  contract. Monitors ship with default streams — `FILE_STREAM` (`files`),
+  `SQLITE_STREAM` (`sqlite`), `WEBHOOK_STREAM` (`webhooks`) — built from the
+  internal record models (`FileRecord`, `DatabaseRow`, `WebhookRecord`).
+  Custom models must accept the monitor's emit fields (a mismatch raises
+  `pydantic.ValidationError` loudly, never silently drops data).
+* `watcher.bind(runtime)` resolves `runtime[stream]`; `auto_persist=True`
+  commits each emitted state as a **new aggregate** (revision 0) via
+  `collection.create(...)`. `persist_strict=True` turns the "not bound"
+  warning into a `ConfigurationException`.
 
 ```python
-from observantic import init, FileEventBase
-from eventic import Record
-
-# Eventic 0.1.5 may be initialized ONCE per process; init() is idempotent
-# (repeated calls return the singleton). Use observantic.reset() to tear it
-# down, e.g. in tests or multi-app processes.
-init(name="my-app", database_url=settings.DB_URL)
+from eventic import App, Stream
+from eventic.sql import SQLite
+from observantic import FileEventBase
 
 
-class FileEvent(Record, FileEventBase):
+class FileEvent(BaseModel):
     path: str = ""
     event_type: str = ""
-    auto_persist: bool = True  # explicit append (idempotent)
+    is_directory: bool = False
 
 
-watcher = FileEvent()
-# Every emitted record now has its v0 row in the store; @on.create handlers
-# fire; further Record mutations create new versions.
+files = Stream(FileEvent, name="files")
+app = App(id="my-app", streams=[files])
+
+store = SQLite("observantic.db")  # dev/test backend
+runtime = app.bind(store)
+
+watcher = FileEventBase(stream=files, auto_persist=True)
+watcher.bind(runtime)
+watcher.start_watching("/documents")
 ```
 
-Note: Eventic declares a DBOS queue per `Record` subclass **at class-definition
- time**, keyed by class name — so `Record` subclass names must be unique per
-process (two classes with the same name raise at definition time).
-
-Hooks run synchronously in the observer's thread. Eventic 0.1.5 wraps **only**
-methods explicitly marked `@evented` (opt-in); observantic's dispatch resolves
-the raw function either way, so hooks run exactly once and never touch DBOS
-queues. If you want DBOS queue semantics, register an explicitly-decorated
-callback via `register_hook` and set `dispatch_direct=False`.
+* **Writes are compare-and-swap**: `collection.change(base, **fields)` and
+  `collection.replace(base, state)` raise `RevisionConflict` on a stale
+  base. Reads: `get(id)`, `get(id, revision=n)`, `history(id)`,
+  `where(**filters)`.
+* **Backends**: `SQLite` for dev/test/single-process; `Postgres` for
+  production (`pip install eventic[postgres]`). Schema is created
+  automatically by `SQLite`; for Postgres run
+  `eventic --app myapp:app --url "$DATABASE_URL" schema upgrade`.
+* **Delivery**: hooks are in-process and best-effort. For durable delivery
+  declare `Subscription`s (`Inline()` or `Outbox(queue=...)`) on the App and
+  run `eventic worker --queue q`. Outbox is at-least-once — handlers must be
+  idempotent.
+* **Schema evolution**: bump `stream.schema_version` and declare upcasters
+  (`eventic.evolution.make_upcaster`); `eventic schema check` exits 3 on
+  model drift.
+* **Removed in 0.3.0**: `init()`/`reset()`/`is_eventic_ready()`,
+  `Record`-based watchers, `@on.create`, `auto_persist` re-appends, DBOS
+  queues. Data written by 0.2.0/eventic 0.1.5 is **not readable** by 0.3.0 —
+  re-ingest (greenfield schema).
 
 ## Hook Registration
 
@@ -248,7 +268,7 @@ flipped.
 ```bash
 uv sync --group dev
 
-# Run tests (DB-backed tests skip unless TEST_DATABASE_URL is set)
+# Run tests (SQLite backend by default; no Postgres needed)
 uv run pytest
 
 # Format and lint
@@ -258,6 +278,10 @@ uv run ruff check .
 # Type check
 uv run mypy src/observantic
 ```
+
+Optional Postgres integration tests: install `eventic[postgres]` and point
+`TEST_DATABASE_URL` at a database (e.g. the devenv Postgres at
+`postgresql://postgres:postgres@127.0.0.1:5432/eventic`).
 
 ## License
 

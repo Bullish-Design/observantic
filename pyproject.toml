@@ -4,14 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "observantic"
-version = "0.2.0"
-description = "Bridges external events (files, SQLite, webhooks) to Eventic Records through customizable hooks"
+version = "0.3.0"
+description = "Bridges external events (files, SQLite, webhooks) to eventic streams through customizable hooks"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "confidantic",
     "eventic",
-    "python-dotenv>=1.1.1",
+    "pydantic>=2.9",
     "watchdog>=6.0.0",
 ]
 
@@ -20,10 +19,13 @@ start = "examples.webhook_server:main"
 
 [dependency-groups]
 dev = [
+    "eventic[postgres]",
+    "eventic[migrate]",
     "pytest>=8",
     "requests>=2.31",
     "ruff>=0.6",
     "mypy>=1.11",
+    "typer>=0.12",  # examples/webhook_server.py (the `start` script) CLI
 ]
 
 [tool.pytest.ini_options]
@@ -31,8 +33,7 @@ testpaths = ["tests"]
 addopts = "-q"
 
 [tool.uv.sources]
-eventic = { git = "https://github.com/Bullish-Design/eventic.git" }
-confidantic = { git = "https://github.com/Bullish-Design/confidantic.git" }
+eventic = { git = "https://github.com/Bullish-Design/eventic.git", tag = "v1.1.0" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/observantic", "src/examples"]

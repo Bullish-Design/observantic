@@ -1,4 +1,4 @@
-"""Shared pytest fixtures that need no external services (no Postgres/DBOS)."""
+"""Shared pytest fixtures (no external services; SQLite is the test backend)."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import socket
 import sqlite3
 
 import pytest
+from eventic.sql import SQLite
 
 
 @pytest.fixture
@@ -29,12 +30,9 @@ def free_port():
     return port
 
 
-@pytest.fixture(autouse=True)
-def _isolate_eventic():
-    """Eventic is process-global (init once per process). Reset it before and
-    after every test so ordering can never leak state between tests."""
-    from observantic import reset
-
-    reset()
-    yield
-    reset()
+@pytest.fixture
+def store():
+    """An in-memory eventic store; tables are created on construction."""
+    s = SQLite(":memory:")
+    yield s
+    s.close()

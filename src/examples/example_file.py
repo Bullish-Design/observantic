@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 # /// script
 # dependencies = [
-#     "observantic @ git+https://github.com/Bullish-Design/observantic",
-#     "eventic @ git+https://github.com/Bullish-Design/eventic",
+#     "observantic>=0.3.0",
+#     "eventic>=1.1.0",
 # ]
 # ///
 """
 File monitoring example for Observantic.
-Watches the current directory for documents and prints hook callbacks.
+Watches the current directory for documents; each event is committed to the
+`documents` stream when persistence is wired.
 """
 
 from __future__ import annotations
@@ -15,32 +16,34 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from eventic import Record
+from eventic import App, Stream
+from eventic.sql import SQLite
+from pydantic import BaseModel
 
 from observantic import FileEventBase
 
 
-class DocumentEvent(Record, FileEventBase):
-    """Monitor documents; each event emits an instance of this Record.
+class DocumentEvent(BaseModel):
+    """One emitted file event (the stream's state model).
 
-    Because this watcher subclasses Eventic's ``Record``, ``_emit()`` creates
-    *your* record (C-08). All class-level configuration must be annotated
-    (pydantic requirement); give every Record field a default so the watcher
-    can be built without a live store.
+    Must accept the monitor's emit fields: path, event_type, is_directory,
+    dest_path (moved events). See IMPLEMENTATION_GUIDE.md Appendix A.
     """
 
-    # Eventic Record fields (defaults so no store/DB is required).
     path: str = ""
     event_type: str = ""
-    size: int = 0
+    is_directory: bool = False
+    dest_path: str | None = None
 
-    # Configure monitoring — annotated overrides (C-02).
+
+documents = Stream(DocumentEvent, name="documents")
+app = App(id="file-demo", streams=[documents])
+
+
+class DocumentWatcher(FileEventBase):
+    """Monitor documents; each event emits a DocumentEvent."""
+
     watch_patterns: list[str] = ["*.pdf", "*.txt", "*.docx", "*.md", "*.py"]
-
-    # Persistence is opt-in. Call observantic.init(...) once to wire a store,
-    # then set auto_persist=True (Eventic 0.1.5 also persists a durable v0 row
-    # at construction and fires @on.create handlers). No launch() required.
-    auto_persist: bool = False
 
     def on_file_created(self, event):
         src = Path(event.src_path)
@@ -66,7 +69,11 @@ def main():
     print("Watching the current directory for documents...")
     print("Press Ctrl+C to stop\n")
 
-    watcher = DocumentEvent()
+    store = SQLite("demo.db")  # or observantic.make_store(settings.DB_URL)
+    runtime = app.bind(store)
+
+    watcher = DocumentWatcher(stream=documents, auto_persist=True)
+    watcher.bind(runtime)
     watcher.start_watching(".")
 
     try:
@@ -76,6 +83,7 @@ def main():
         print("\n✅ Monitoring stopped")
     finally:
         watcher.stop_watching()
+        store.close()
 
 
 if __name__ == "__main__":

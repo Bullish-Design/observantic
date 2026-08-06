@@ -1,17 +1,16 @@
 """observantic.core.base
 ========================
-Minimal, fully-functional foundation shared by every Observantic watcher.
+Foundation shared by every Observantic watcher.
 
 Guiding principles:
 * Fail fast at ``start_watching()`` — the state machine validates *before*
   flipping state and rolls back on failure (H-10).
 * The observer thread must never die: all hook/lifecycle errors funnel to
   ``on_error`` and are swallowed (C-04).
-* Dispatch bypasses Eventic's metaclass wrappers by default
-  (``call_unwrapped`` from the ``observantic._eventic`` seam), so
-  Record-based watchers work without ``launch()`` and never double-execute
-  (C-03).
-* Persistence is opt-in (``auto_persist`` + ``record_model``) and honest (C-08).
+* Persistence is explicit and store-bound (eventic 1.1, invariant I5): a
+  watcher declares a ``stream`` and ``bind()``s a ``Runtime``; ``_emit()``
+  builds a plain pydantic state and, with ``auto_persist=True``, commits it
+  through the bound ``Collection`` (compare-and-swap, loud conflicts).
 """
 
 from __future__ import annotations
@@ -23,9 +22,11 @@ from collections.abc import Callable
 from threading import Lock
 from typing import Any
 
+from eventic import Stream
+from eventic.errors import UsageError
+from eventic.runtime import Collection, Runtime
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
-from .._eventic import EventicNotReadyError, call_unwrapped, is_record_class, persist
 from ..exceptions import ConfigurationException, WatcherException
 
 logger = logging.getLogger("observantic")
@@ -36,29 +37,29 @@ HookFn = Callable[..., Any]
 class EventWatcher(BaseModel, ABC):
     """
     Abstract base providing the watcher state machine, hook dispatch, and
-    optional Eventic persistence.
+    optional eventic persistence.
 
     Subclasses implement the extension points ``_validate_start`` /
-    ``_start_impl`` / ``_stop_impl``, emit records with ``_emit``, and fire
-    hooks with ``_dispatch_hook``.
+    ``_start_impl`` / ``_stop_impl``, declare a ``stream``, and emit states
+    with ``_emit`` / fire hooks with ``_dispatch_hook``.
     """
 
-    # ---- dispatch / persistence knobs ---------------------------------- #
-    record_model: type[Any] | None = Field(
+    # ---- eventic integration -------------------------------------------- #
+    stream: Stream | None = Field(
         default=None,
-        description="Model emitted per event; defaults to the monitor's internal record model",
+        description=(
+            "Eventic Stream this watcher emits into. Its model is the "
+            "persisted state contract; defaults per monitor (FILE_STREAM, "
+            "SQLITE_STREAM, WEBHOOK_STREAM)."
+        ),
     )
     auto_persist: bool = Field(
         default=False,
-        description="Append emitted records to Eventic's store (requires observantic.init; Eventic 0.1.5 also persists a durable v0 row at construction when a store is wired)",
+        description="Commit each emitted state to the bound Collection (requires bind())",
     )
     persist_strict: bool = Field(
         default=False,
-        description="Raise ConfigurationException when auto_persist is requested but Eventic is not ready",
-    )
-    dispatch_direct: bool = Field(
-        default=True,
-        description="Bypass Eventic metaclass wrappers when dispatching hooks (recommended)",
+        description="Raise ConfigurationException when auto_persist is requested but no Collection is bound",
     )
     raise_on_hook_error: bool = Field(
         default=False,
@@ -71,6 +72,8 @@ class EventWatcher(BaseModel, ABC):
     _watching: bool = PrivateAttr(default=False)
     _lock: Lock = PrivateAttr(default_factory=Lock)
     _last_hook_error: Exception | None = PrivateAttr(default=None)
+    _runtime: Runtime | None = PrivateAttr(default=None)
+    _collection: Collection[Any] | None = PrivateAttr(default=None)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -131,6 +134,33 @@ class EventWatcher(BaseModel, ABC):
     def _stop_impl(self) -> None:
         """Tear down resources. Must be bounded."""
 
+    # ---- eventic binding ------------------------------------------------- #
+
+    def bind(self, runtime: Runtime) -> None:
+        """Bind a Runtime so ``auto_persist`` emits commit to ``self.stream``.
+
+        Idempotent; ``unbind()`` reverses it. Raises ConfigurationException
+        when the watcher has no stream, or the stream is not installed in the
+        runtime's app.
+        """
+        if self.stream is None:
+            raise ConfigurationException(
+                "cannot bind: watcher has no stream (set stream=...)"
+            )
+        try:
+            collection = runtime[self.stream]
+        except UsageError as exc:
+            raise ConfigurationException(
+                f"stream {self.stream.name!r} is not installed in the bound app"
+            ) from exc
+        self._runtime = runtime
+        self._collection = collection
+
+    def unbind(self) -> None:
+        """Drop the bound Runtime/Collection."""
+        self._runtime = None
+        self._collection = None
+
     # ---- hook dispatch -------------------------------------------------- #
 
     def _dispatch_hook(
@@ -156,14 +186,13 @@ class EventWatcher(BaseModel, ABC):
         return self._last_hook_error if self.raise_on_hook_error else None
 
     def _hook_callables(self, event_name: str) -> list[HookFn]:
-        """Override method (wrapper-stripped, bound) first, then callbacks."""
-        fn: HookFn | None
-        if self.dispatch_direct:
-            raw = call_unwrapped(type(self), event_name)
-            fn = raw.__get__(self) if raw is not None else None
-        else:
-            candidate = getattr(self, event_name, None)
-            fn = candidate if callable(candidate) else None
+        """Override method (bound) first, then registered callbacks.
+
+        eventic 1.1 has no metaclass wrappers — a plain ``getattr`` is the
+        raw hook; no unwrapping is needed.
+        """
+        candidate = getattr(self, event_name, None)
+        fn = candidate if callable(candidate) else None
         with self._lock:
             callbacks = list(self._hooks.get(event_name, ()))
         return ([fn] if fn is not None else []) + callbacks
@@ -171,51 +200,55 @@ class EventWatcher(BaseModel, ABC):
     def _safe_call(self, name: str, *args: Any) -> None:
         """Invoke a lifecycle hook; failures are logged, never raised."""
         try:
-            fn = call_unwrapped(type(self), name)
+            fn = getattr(self, name, None)
             if fn is not None:
-                fn(self, *args)
+                fn(*args)
         except Exception as e:
             logger.error("lifecycle hook %s failed: %s", name, e, exc_info=True)
 
     # ---- emission / persistence ----------------------------------------- #
 
     def _emit(self, **fields: Any) -> Any:
-        """Create an event record.
+        """Build the state model instance for one external event.
 
-        The emitted model is, in order of preference: the user-set
-        ``record_model``; the watcher's own class when it is a Record
-        subclass (so ``_emit()`` creates *your* record — C-08); or the
-        monitor's internal record model.
+        The model is ``self.stream.model`` when a stream is declared, else
+        the monitor's internal record model (``_default_record_model``). With
+        ``auto_persist=True`` the state is committed to the bound Collection
+        as a new aggregate (revision 0).
 
-        With ``auto_persist=True`` the record is also appended to Eventic's
-        store (an idempotent re-append for Record-based models — Eventic
-        0.1.5 already persists the durable v0 row at construction and fires
-        ``@on.create``); a missing Eventic degrades to a warning unless
-        ``persist_strict=True`` (which raises ConfigurationException).
+        A custom stream model must accept the monitor's emit fields (see
+        IMPLEMENTATION_GUIDE.md Appendix A) — a mismatch raises loudly rather
+        than silently dropping data.
         """
-        model = self.record_model
-        if model is None:
-            if is_record_class(type(self)):
-                model = type(self)
-            else:
-                model = self._default_record_model()
-        record = model(**fields)
+        model = (
+            self.stream.model
+            if self.stream is not None
+            else self._default_record_model()
+        )
+        state = model(**fields)
         if self.auto_persist:
-            try:
-                persist(record)
-            except EventicNotReadyError as e:
-                if self.persist_strict:
-                    raise ConfigurationException(str(e)) from e
-                logger.warning(
-                    "auto_persist=True but Eventic not ready; record not persisted"
+            self._persist(state)
+        return state
+
+    def _persist(self, state: Any) -> None:
+        """Commit one emitted state to the bound Collection."""
+        if self._collection is None:
+            if self.persist_strict:
+                raise ConfigurationException(
+                    "auto_persist=True but watcher is not bound; "
+                    "call watcher.bind(runtime) first or set auto_persist=False"
                 )
-        return record
+            logger.warning(
+                "auto_persist=True but watcher is not bound; state not persisted"
+            )
+            return
+        self._collection.create(state)
 
     def _default_record_model(self) -> type[Any]:
-        """Return the monitor's internal record model (subclass contract)."""
+        """Return the monitor's internal state model (subclass contract)."""
         raise NotImplementedError
 
     # ---- future async placeholder --------------------------------------- #
 
     async def run_async(self) -> None:
-        raise NotImplementedError("Async watchers planned for v1.1")
+        raise NotImplementedError("Async watchers planned for a later release")

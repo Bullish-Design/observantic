@@ -8,7 +8,7 @@ import observantic
 
 
 def test_version_consistent_with_metadata():
-    assert observantic.__version__ == "0.2.0"
+    assert observantic.__version__ == "0.3.0"
     assert importlib.metadata.version("observantic") == observantic.__version__
 
 
@@ -17,13 +17,15 @@ def test_all_exports_resolve():
         assert hasattr(observantic, name), name
 
 
-def test_init_reexport():
-    assert callable(observantic.init)
+def test_eventic_integration_exports():
+    assert callable(observantic.make_store)
+    assert callable(observantic.build_app)
 
 
-def test_is_eventic_ready_callable():
-    assert callable(observantic.is_eventic_ready)
-    assert observantic.is_eventic_ready() is False  # not initialized by default
+def test_default_streams_exports():
+    assert observantic.FILE_STREAM.name == "files"
+    assert observantic.SQLITE_STREAM.name == "sqlite"
+    assert observantic.WEBHOOK_STREAM.name == "webhooks"
 
 
 def test_settings_export():

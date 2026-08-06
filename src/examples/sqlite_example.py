@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # /// script
 # dependencies = [
-#     "observantic>=0.2.0",
-#     "eventic>=0.1.5",
+#     "observantic>=0.3.0",
+#     "eventic>=1.1.0",
 # ]
 # ///
 """
@@ -15,13 +15,29 @@ from __future__ import annotations
 import sqlite3
 import time
 from pathlib import Path
+from typing import Any, Literal
 
-from eventic import Record
+from eventic import App, Stream
+from eventic.sql import SQLite
+from pydantic import BaseModel
 
 from observantic import SQLiteEventBase
 
 
-class DatabaseSync(Record, SQLiteEventBase):
+class RowEvent(BaseModel):
+    """One emitted row-level change (the stream's state model)."""
+
+    table_name: str = ""
+    row_data: dict[str, Any] | None = None
+    row_id: int | str | None = None
+    operation: Literal["inserted", "updated", "deleted"] = "inserted"
+
+
+rows = Stream(RowEvent, name="row_events")
+app = App(id="sqlite-demo", streams=[rows])
+
+
+class DatabaseSync(SQLiteEventBase):
     """Monitor SQLite changes.
 
     Prefer the per-row hooks below; ``on_data_changed`` is kept for
@@ -29,13 +45,7 @@ class DatabaseSync(Record, SQLiteEventBase):
     check.
     """
 
-    # Eventic Record fields (defaults so no store/DB is required).
-    table: str = ""
-    operation: str = ""
-    row_count: int = 0
-
     def on_row_inserted(self, row):
-        """Per-row hook (new API)."""
         print(f"➕ Inserted into {row.table_name}: {row.row_data}")
 
     def on_row_updated(self, row):
@@ -48,7 +58,6 @@ class DatabaseSync(Record, SQLiteEventBase):
         print(f"🧬 Schema changed: +{change.tables_added} -{change.tables_dropped}")
 
     def on_start(self):
-        """Called when monitoring starts."""
         print(f"Started monitoring database: {self._db_path}")
 
 
@@ -90,27 +99,25 @@ def add_test_data(db_path: str):
 
 
 def main():
-    """Run SQLite monitoring demo."""
     print("🚀 SQLite Monitor Demo")
-
     db_path = "example.db"
     setup_test_db(db_path)
-
     print(f"Monitoring database: {db_path}")
-    print("Adding test data...\n")
 
-    monitor = DatabaseSync()
+    store = SQLite("demo-events.db")
+    runtime = app.bind(store)
+    monitor = DatabaseSync(stream=rows, auto_persist=True)
+    monitor.bind(runtime)
     monitor.start_watching(db_path)
 
     try:
         add_test_data(db_path)
-        time.sleep(2)  # Let events process
+        time.sleep(2)
     finally:
         monitor.stop_watching()
+        store.close()
 
     print("\n✅ Monitoring complete")
-
-    # Cleanup
     Path(db_path).unlink(missing_ok=True)
 
 
