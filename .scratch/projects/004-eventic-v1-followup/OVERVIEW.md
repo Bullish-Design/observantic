@@ -16,10 +16,13 @@ that alignment — two of them data-loss/crash bugs.
 
 **Resolution note (reconciled with the 0.3.0-plan guide):** F3 was fixed
 properly rather than documented around — eventic's `alembic.ini` landed as
-`f72d752`, observantic pins eventic **v1.1.1**, and `schema upgrade` now
+`f72d752`, observantic pins eventic **v1.1.2**, and `schema upgrade` now
 runs with no shim. F1 was also fixed **at the root cause** in eventic
-(`_SerializedStaticPool` in eventic v1.1.1); observantic keeps its
-`_persist_lock` as defense-in-depth for older eventic pins.
+(`_SerializedStaticPool` in eventic v1.1.2, using a counting **semaphore**
+— a contended `Lock`/`RLock` futex-handoff convoy under the GIL collapses
+`:memory:` write throughput ~4x, a semaphore stays work-conserving;
+observantic keeps its `_persist_lock` — also a semaphore — as
+defense-in-depth for older eventic pins.
 | F4 | `make_store("postgresql://...")` produces `ModuleNotFoundError: psycopg2` — SQLAlchemy's bare `postgresql://` dialect defaults to psycopg2, but eventic's `[postgres]` extra ships **psycopg3** (`psycopg[binary]>=3.2`). `postgresql+psycopg://` works. | Medium — documented URL broken | probe run |
 | F5 | The 003 guide's Step 11 watcher smoke (`stream = s` in a subclass) raises `PydanticUserError` on pydantic ≥ 2.11: field overrides must be annotated. The annotated `stream: Stream = s` works. | Low — docs | probe run |
 
@@ -37,11 +40,11 @@ and version 0.3.0 needs a bump for the behavior changes.
    model/persist error never kills the watchdog observer. Fixes F2.
 2. **P2 — Serialized writes** (`core/base.py`): a module-level lock around
    every collection mutation (`_commit`) makes `:memory:` stores
-deterministic. Fixes F1 locally; root cause fixed upstream in eventic v1.1.1.
+deterministic. Fixes F1 locally; root cause fixed upstream in eventic v1.1.2.
 3. **P3 — psycopg3 URL translation** (`_eventic.py`): bare `postgresql://`
    becomes `postgresql+psycopg://` inside `make_store`. Fixes F4.
 4. **P4 — Fix the migration gap properly**: land `alembic.ini` upstream
-   (done, `f72d752`), pin observantic to eventic **v1.1.1**, prove
+   (done, `f72d752`), pin observantic to eventic **v1.1.2**, prove
    `schema upgrade` works with no shim. Fixes F3.
 5. **P5 — `examples` package** (`src/examples/__init__.py`).
 6. **P6 — Committed outbox/worker test** (`tests/test_outbox_worker.py`).

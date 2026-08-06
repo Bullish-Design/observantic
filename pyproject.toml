@@ -33,7 +33,7 @@ testpaths = ["tests"]
 addopts = "-q"
 
 [tool.uv.sources]
-eventic = { git = "https://github.com/Bullish-Design/eventic.git", tag = "v1.1.1" }
+eventic = { git = "https://github.com/Bullish-Design/eventic.git", tag = "v1.1.2" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/observantic", "src/examples"]

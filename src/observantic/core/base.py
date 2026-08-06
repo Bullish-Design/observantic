@@ -19,7 +19,7 @@ import logging
 from abc import ABC
 from collections import defaultdict
 from collections.abc import Callable
-from threading import Lock
+from threading import Lock, Semaphore
 from typing import Any
 
 from eventic import Stream
@@ -36,7 +36,12 @@ logger = logging.getLogger("observantic")
 # create() calls from observer threads. Serialize all observantic persists
 # process-wide; the lock is a no-op for file-based SQLite (QueuePool + WAL)
 # and Postgres (pooled connections).
-_persist_lock = Lock()
+#
+# A counting semaphore (not threading.Lock/RLock): on CPython, contended
+# mutex futex-handoff under the GIL collapses :memory: write throughput
+# ~4x, while a semaphore stays work-conserving (see eventic's
+# _SerializedStaticPool, same finding).
+_persist_lock = Semaphore(1)
 
 HookFn = Callable[..., Any]
 

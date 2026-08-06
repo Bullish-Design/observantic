@@ -18,12 +18,12 @@ This guide's original hardening steps (P1–P9 below) were later reconciled
 with the 0.3.0 follow-up plan that arrived via the merge (`5f0f34d`). The
 final released shape is **v0.3.0** and includes, on top of the steps below:
 
-- **eventic pinned to v1.1.1** (released during this project): ships
+- **eventic pinned to v1.1.2** (released during this project): ships
   `alembic.ini` — `eventic schema upgrade` now works with **no shim**
   (Step 4 was upgraded from "document the gap" to "land the fix upstream
   and pin").
 - **`SQLite(":memory:")` concurrency fixed at the root cause in eventic**
-  (`_SerializedStaticPool` in eventic v1.1.1, with a regression test in
+  (`_SerializedStaticPool` in eventic v1.1.2, with a regression test in
   eventic's suite). Observantic keeps `_persist_lock` as defense-in-depth
   for older eventic pins.
 - **`SQLiteEventBase.key_aggregates=True`** (from the plan, deferred from
@@ -296,7 +296,7 @@ service socket is not visible and the listener on :5432 rejects known
 credentials), so the translation is unit-tested with a stub (Step 6) and the
 real round-trip lives in the opt-in integration test (Step 8).
 
-## Step 4 — Land the migration fix upstream and pin v1.1.1 (F3)
+## Step 4 — Land the migration fix upstream and pin v1.1.2 (F3)
 
 The original 004 plan documented this gap as blocked; the reconciled
 solution fixes it properly.
@@ -304,13 +304,13 @@ solution fixes it properly.
 In the eventic repo, the `alembic.ini` packaging fix was already committed
 (`f72d752`, un-ignored + tracked). This project added the
 `_SerializedStaticPool` concurrency fix, bumped eventic to **1.1.1**, and
-tagged/pushed `v1.1.1`. Observantic then pins the tag:
+tagged/pushed `v1.1.2`. Observantic then pins the tag:
 
 **File: `pyproject.toml`**
 
 ```toml
 [tool.uv.sources]
-eventic = { git = "https://github.com/Bullish-Design/eventic.git", tag = "v1.1.1" }
+eventic = { git = "https://github.com/Bullish-Design/eventic.git", tag = "v1.1.2" }
 ```
 
 ```bash
@@ -678,17 +678,17 @@ checks `src/observantic`).
 
 ```bash
 git add -A
-git commit -m "release 0.3.0: eventic v1.1.1 followup
+git commit -m "release 0.3.0: eventic v1.1.2 followup
 
 - serialize persistence writes; eventic :memory: SQLite (StaticPool) is
   unsafe under concurrent create() from observer threads (F1); root cause
-  also fixed upstream (eventic v1.1.1 _SerializedStaticPool)
+  also fixed upstream (eventic v1.1.2 _SerializedStaticPool)
 - observer-thread safety: _persist routes store errors to on_error unless
   persist_strict; monitors emit via _emit_safe so a raise never kills the
   watchdog observer thread (F2, C-04)
 - make_store translates bare postgresql:// to postgresql+psycopg://
   (eventic[postgres] ships psycopg3) (F4)
-- pin eventic v1.1.1 (ships alembic.ini) — schema upgrade works (F3)
+- pin eventic v1.1.2 (ships alembic.ini) — schema upgrade works (F3)
 - SQLiteEventBase.key_aggregates: per-row revision history (keyed
   aggregates), reconciled with the persist-lock/on_error guards
 - fix start console script (examples.webhook_server:app) and devenv
@@ -718,7 +718,7 @@ git commit -m "release 0.3.0: eventic v1.1.1 followup
 ## Appendix B — Verification checklist (004)
 
 - [x] concurrency probe: 200/200 persisted, 0 errors on `:memory:` (pure
-      eventic v1.1.1 and through observantic)
+      eventic v1.1.2 and through observantic)
 - [x] `uv run pytest -q` → all green (incl. outbox, persistence, and the 8
       keyed-aggregate tests)
 - [x] `uv run ruff check . && uv run ruff format --check .` → clean
@@ -728,7 +728,7 @@ git commit -m "release 0.3.0: eventic v1.1.1 followup
 - [x] `uv run eventic --app examples.demo_app:app --url sqlite:///demo.db
       inspect` prints `files`/`sqlite`/`webhooks`
 - [x] `uv run eventic --app examples.demo_app:app --url sqlite:///demo.db
-      schema upgrade` works (eventic v1.1.1 ships `alembic.ini`)
+      schema upgrade` works (eventic v1.1.2 ships `alembic.ini`)
 - [x] `uv run eventic --app examples.demo_app:app --url sqlite:///demo.db
       verify` → `verified 0 revisions ... 0 mismatches`
 - [x] Postgres integration test (4 tests) skips cleanly without
@@ -749,7 +749,7 @@ git commit -m "release 0.3.0: eventic v1.1.1 followup
 - **Step 11 watcher smoke**: the subclass must annotate the stream override —
   `stream: Stream = s` — or pydantic ≥ 2.11 raises `PydanticUserError`.
 - **Step 11 `schema upgrade`**: fails on the v1.1.0 wheel (`alembic.ini`
-  missing); fixed by pinning eventic **v1.1.1** (ships `alembic.ini`). Use
+  missing); fixed by pinning eventic **v1.1.2** (ships `alembic.ini`). Use
   `inspect`/`verify` for SQLite verification (F3).
 - **`where()` page size**: `Collection.where(limit=...)` defaults to 100 —
   count assertions must pass `limit=1000` (or page).

@@ -6,7 +6,7 @@ alignment, **already implemented** on branch `align/eventic-v1.1.0`, commit
 
 1. Merge the alignment to `main` and prepare the 0.3.0 release.
 2. Finish landing the **eventic `alembic.ini` packaging fix** (un-ignored but
-   still uncommitted/untagged) and pin observantic to `v1.1.1`.
+   still uncommitted/untagged) and pin observantic to `v1.1.2`.
 3. Fix the broken devenv Postgres service (stale `unix_socket_directories`
    hardcode) and add a `TEST_DATABASE_URL`-gated **Postgres integration
    test**.
@@ -75,7 +75,7 @@ upgrade` ("No 'script_location' key found"). Land it:
 ```bash
 cd ~/Documents/Projects/eventic
 git status --short            # expect: M .gitignore, ?? src/eventic/sql/migrations/alembic.ini
-git rev-parse v1.1.1 >/dev/null 2>&1 && echo "already tagged — skip to Step 2" || true
+git rev-parse v1.1.2 >/dev/null 2>&1 && echo "already tagged — skip to Step 2" || true
 
 # 1. commit the fix (alembic.ini must be included in the sdist)
 git add src/eventic/sql/migrations/alembic.ini .gitignore
@@ -92,29 +92,29 @@ git add pyproject.toml src/eventic/__init__.py
 git commit -m "release: 1.1.1"
 
 # 3. tag and push
-git tag v1.1.1
+git tag v1.1.2
 git push origin main --tags
 ```
 
 Verify the tag ships the file:
 
 ```bash
-git show v1.1.1:src/eventic/sql/migrations/alembic.ini | head -3   # [alembic]
+git show v1.1.2:src/eventic/sql/migrations/alembic.ini | head -3   # [alembic]
 ```
 
-> If the maintainer already tagged `v1.1.1` (or you cannot push to the
+> If the maintainer already tagged `v1.1.2` (or you cannot push to the
 > eventic remote), pin observantic to `rev = "<commit-hash>"` instead and
 > skip the `git tag`/`push` lines.
 
 ---
 
-## Step 2 — Pin observantic to eventic `v1.1.1`
+## Step 2 — Pin observantic to eventic `v1.1.2`
 
 **File: `pyproject.toml`** — one line:
 
 ```toml
 [tool.uv.sources]
-eventic = { git = "https://github.com/Bullish-Design/eventic.git", tag = "v1.1.1" }
+eventic = { git = "https://github.com/Bullish-Design/eventic.git", tag = "v1.1.2" }
 ```
 
 Re-resolve and verify:
@@ -139,7 +139,7 @@ Commit:
 
 ```bash
 git add pyproject.toml uv.lock
-git commit -m "chore: pin eventic v1.1.1 (ships alembic.ini for schema upgrade)"
+git commit -m "chore: pin eventic v1.1.2 (ships alembic.ini for schema upgrade)"
 ```
 
 ---
@@ -802,7 +802,7 @@ eventic CLI).
   (inserts -> create; updates/deletes -> replace on a stable aggregate id).
 - `tests/test_postgres_integration.py` — `TEST_DATABASE_URL`-gated Postgres
   coverage through the public API.
-- eventic pinned to v1.1.1, which ships `alembic.ini` so `eventic schema
+- eventic pinned to v1.1.2, which ships `alembic.ini` so `eventic schema
   upgrade` works out of the box (v1.1.0's wheel could not).
 
 **Fixed:**
@@ -835,8 +835,8 @@ eventic CLI).
 ## Appendix B — Verification checklist
 
 - [ ] `main` contains the 003 alignment merge (`4e50cc0`); full gate green
-- [ ] eventic `v1.1.1` exists on the remote and ships `alembic.ini`
-- [ ] `uv.lock` pins eventic `v1.1.1`; `import eventic` prints `1.1.1`
+- [ ] eventic `v1.1.2` exists on the remote and ships `alembic.ini`
+- [ ] `uv.lock` pins eventic `v1.1.2`; `import eventic` prints `1.1.1`
 - [ ] `eventic schema upgrade` works with **no shim** (SQLite; Postgres too)
 - [ ] devenv Postgres starts; `Postgres("postgresql+psycopg://postgres:postgres@127.0.0.1:<port>/eventic")` connects
 - [ ] `TEST_DATABASE_URL=... uv run pytest tests/test_postgres_integration.py -v` → 4 passed

@@ -6,7 +6,7 @@ Use it with the eventic CLI, e.g.:
     uv run eventic --app examples.demo_app:app --url sqlite:///demo.db inspect
     uv run eventic --app examples.demo_app:app --url sqlite:///demo.db verify
 
-``schema upgrade`` (Alembic) works with eventic v1.1.1+ (which ships
+``schema upgrade`` (Alembic) works with eventic v1.1.2+ (which ships
 ``alembic.ini``; v1.1.0's wheel could not) and is the way to bootstrap a
 Postgres production schema:
 

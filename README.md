@@ -229,13 +229,15 @@ watcher.start_watching("/documents")
   psycopg3 dialect, and `postgresql+psycopg://` works too). Schema is
   created automatically by both backends (`create_tables=True` default),
   and `eventic --app myapp:app --url "$DATABASE_URL" schema upgrade`
-  (Alembic) works for Postgres since eventic v1.1.1 (which ships
+  (Alembic) works for Postgres since eventic v1.1.2 (which ships
   `alembic.ini`; v1.1.0's wheel could not).
   `eventic schema check` / `verify` work on SQLite.
 * **Writes are serialized**: concurrent emits from observer threads (webhook
   requests, watchdog handlers) are committed one at a time — eventic's
   `SQLite(":memory:")` store shares a single connection and is not safe
-  under parallel `create()` calls.
+  under parallel `create()` calls. Serialization uses a counting semaphore
+  (work-conserving; a plain `Lock` convoyed under the GIL and collapsed
+  `:memory:` throughput ~4x).
 * **Delivery**: hooks are in-process and best-effort. For durable delivery
   declare `Subscription`s (`Inline()` or `Outbox(queue=...)`) on the App and
   run `eventic worker --queue q`. Outbox is at-least-once — handlers must be
@@ -255,7 +257,7 @@ watcher.start_watching("/documents")
   URLs are translated to the psycopg3 driver (`postgresql+psycopg://`);
   `SQLiteEventBase(key_aggregates=True)` gives each row a durable revision
   history; the `start` console script runs the typer CLI; eventic is pinned
-  to v1.1.1 (ships `alembic.ini`); committed outbox/worker and opt-in
+  to v1.1.2 (ships `alembic.ini`); committed outbox/worker and opt-in
   Postgres integration tests are included.
 
 ## Hook Registration
