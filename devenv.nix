@@ -68,7 +68,7 @@
   devman = {
     enable = true;
     project = "observantic";
-    groups = [ "python" ];
+    groups = [ "python" "release" ];
   };
 
   # https://devenv.sh/tasks/
@@ -85,6 +85,15 @@
     "python:lint".exec = "uv run ruff check .";
     "python:typecheck".exec = "uv run mypy";
     "python:test".exec = "uv run pytest";
+
+    # What the `release` group's one workflow builds here (stage 4). The group
+    # names the task and this repository names the tool, so `release.yaml` needs
+    # no edit and holds no absolute path.
+    #
+    # `.devman/.runs/artifacts/` is where a run's output goes (CONCEPT.md §9.2).
+    # It is created at registration and git-ignored, so a built wheel never
+    # dirties the tree, and the release workflow lists what appeared there.
+    "release:build".exec = "uv build --out-dir .devman/.runs/artifacts";
   };
 
   # https://devenv.sh/tests/

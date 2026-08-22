@@ -22,17 +22,17 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1787430772,
-        "narHash": "sha256-29dLlnFxUL3SICReifrnCD+opUlM5TTHgEqxkpBIqWQ=",
+        "lastModified": 1787434324,
+        "narHash": "sha256-gOiD9ohDFUdZc0wbTzGEU4Un1xJy3K+7UU2+YvuBPRY=",
         "ref": "main",
-        "rev": "9610f97d1cb48330b4e4b75dd423b0b6a47107ab",
-        "revCount": 208,
+        "rev": "a77dc309eb9d7e2012057d88a3bb38f2187100c1",
+        "revCount": 219,
         "type": "git",
         "url": "https://github.com/Bullish-Design/devman"
       },
       "original": {
         "ref": "main",
-        "rev": "9610f97d1cb48330b4e4b75dd423b0b6a47107ab",
+        "rev": "a77dc309eb9d7e2012057d88a3bb38f2187100c1",
         "type": "git",
         "url": "https://github.com/Bullish-Design/devman"
       }
