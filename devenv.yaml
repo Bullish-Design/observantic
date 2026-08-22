@@ -23,7 +23,7 @@ inputs:
   # `narHash` in devenv.lock. `git+file` records neither and silently follows
   # the branch head.
   devman:
-    url: "git+https://github.com/Bullish-Design/devman?ref=main&rev=a77dc309eb9d7e2012057d88a3bb38f2187100c1"
+    url: "git+https://github.com/Bullish-Design/devman?ref=main&rev=df9cfe5ae3f5e6d77bb23300d4aa5c87adc478fc"
 
 imports:
   - shellij/modules
