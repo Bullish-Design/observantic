@@ -68,7 +68,7 @@
   devman = {
     enable = true;
     project = "observantic";
-    groups = [ "python" "release" ];
+    groups = [ "base" "python" "release" ];
   };
 
   # https://devenv.sh/tasks/
@@ -94,6 +94,20 @@
     # It is created at registration and git-ignored, so a built wheel never
     # dirties the tree, and the release workflow lists what appeared there.
     "release:build".exec = "uv build --out-dir .devman/.runs/artifacts";
+
+    # `base`'s two names, aliased onto the tasks above (stage 5). A devenv task
+    # with only `after` and no `exec` runs its dependency and fails when that
+    # dependency fails, so this duplicates no command body.
+    #
+    # WHY THIS REPOSITORY TAKES `base` AS WELL. `review` and `maintain` live in
+    # `base` and are not ecosystem content: one runs git and the group's two
+    # names, the other prunes `.devman/.runs/` and asks `devman doctor`. Copying
+    # them into `python` would put one file in two groups and give this
+    # repository a second copy to keep in step (CONCEPT.md §3.1). `python`
+    # shadows `check` and `validate` as before, and `base` adds what only it has
+    # (STAGE_5_LOG.md, S5).
+    "base:lint".after = [ "python:lint" ];
+    "base:test".after = [ "python:test" ];
   };
 
   # https://devenv.sh/tests/
