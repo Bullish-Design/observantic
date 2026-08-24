@@ -68,7 +68,7 @@
   devman = {
     enable = true;
     project = "observantic";
-    groups = [ "base" "python" "release" ];
+    groups = [ "base" "release" ];
   };
 
   # https://devenv.sh/tasks/
@@ -106,7 +106,7 @@
     # repository a second copy to keep in step (CONCEPT.md §3.1). `python`
     # shadows `check` and `validate` as before, and `base` adds what only it has
     # (STAGE_5_LOG.md, S5).
-    "base:lint".after = [ "python:lint" ];
+    "base:check".after = [ "python:lint" "python:typecheck" ];
     "base:test".after = [ "python:test" ];
   };
 
