@@ -65,12 +65,6 @@
   # `project` is identity and never a path. It is stated rather than derived
   # from the directory name, so renaming the checkout does not re-register this
   # repository as a new one and lose its run history.
-  devman = {
-    enable = true;
-    project = "observantic";
-    groups = [ "base" "release" ];
-  };
-
   # https://devenv.sh/tasks/
   #
   # The three task names the `python` group's workflows call. The group states
