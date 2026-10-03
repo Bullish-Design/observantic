@@ -33,27 +33,6 @@
         "type": "github"
       }
     },
-    "home-manager": {
-      "inputs": {
-        "nixpkgs": [
-          "shellij",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1784123766,
-        "narHash": "sha256-PZcuvieLhy1OaX5LQr4kZgO59x/7rS47vWSqOXiBhts=",
-        "owner": "nix-community",
-        "repo": "home-manager",
-        "rev": "6dc9e081ba2afc8c3b81ccddcb895f786155b292",
-        "type": "github"
-      },
-      "original": {
-        "owner": "nix-community",
-        "repo": "home-manager",
-        "type": "github"
-      }
-    },
     "mk-shell-bin": {
       "locked": {
         "lastModified": 1677004959,
@@ -71,7 +50,7 @@
     },
     "nix2container": {
       "inputs": {
-        "nixpkgs": "nixpkgs_2"
+        "nixpkgs": "nixpkgs"
       },
       "locked": {
         "lastModified": 1775487831,
@@ -89,16 +68,15 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1787135253,
-        "narHash": "sha256-RD2kNWCG+Bjo6h+JVjWVNntZs2GtRoeY2xHjts/FNkA=",
+        "lastModified": 1767028467,
+        "narHash": "sha256-7G+2aXClSMaTY1ogpX14CAxjRsvyVzpE0GRwL71WO7g=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "ffb3c9b700e759be2ef13237c9d8f953b32a1e46",
+        "rev": "1cabc318c11299f07ca53e3cb719854682fe6eb3",
         "type": "github"
       },
       "original": {
         "owner": "NixOS",
-        "ref": "nixos-unstable",
         "repo": "nixpkgs",
         "type": "github"
       }
@@ -106,7 +84,7 @@
     "nixpkgs-python": {
       "inputs": {
         "flake-compat": "flake-compat",
-        "nixpkgs": "nixpkgs_4"
+        "nixpkgs": "nixpkgs_3"
       },
       "locked": {
         "lastModified": 1784686015,
@@ -140,21 +118,6 @@
       }
     },
     "nixpkgs_2": {
-      "locked": {
-        "lastModified": 1767028467,
-        "narHash": "sha256-7G+2aXClSMaTY1ogpX14CAxjRsvyVzpE0GRwL71WO7g=",
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "1cabc318c11299f07ca53e3cb719854682fe6eb3",
-        "type": "github"
-      },
-      "original": {
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
-    "nixpkgs_3": {
       "inputs": {
         "nixpkgs-src": "nixpkgs-src"
       },
@@ -173,7 +136,7 @@
         "type": "github"
       }
     },
-    "nixpkgs_4": {
+    "nixpkgs_3": {
       "locked": {
         "lastModified": 1773964973,
         "narHash": "sha256-NV/J+tTER0P5iJhUDL/8HO5MDjDceLQPRUYgdmy5wXw=",
@@ -189,44 +152,13 @@
         "type": "github"
       }
     },
-    "nixpkgs_5": {
-      "locked": {
-        "lastModified": 1784007870,
-        "narHash": "sha256-djcLt/JJphyNt4eDY9XTly+/WbCK5lqWq9lSgCmJkkQ=",
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "18b9261cb3294b6d2a06d03f96872827b8fe2698",
-        "type": "github"
-      },
-      "original": {
-        "owner": "NixOS",
-        "ref": "nixos-unstable",
-        "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
     "root": {
       "inputs": {
         "devenv": "devenv",
         "mk-shell-bin": "mk-shell-bin",
         "nix2container": "nix2container",
-        "nixpkgs": "nixpkgs_3",
-        "nixpkgs-python": "nixpkgs-python",
-        "shellij": "shellij"
-      }
-    },
-    "shellij": {
-      "inputs": {
-        "home-manager": "home-manager",
-        "nixpkgs": "nixpkgs_5"
-      },
-      "locked": {
-        "type": "git",
-        "url": "file:///home/andrew/Documents/Projects/shellij"
-      },
-      "original": {
-        "type": "git",
-        "url": "file:///home/andrew/Documents/Projects/shellij"
+        "nixpkgs": "nixpkgs_2",
+        "nixpkgs-python": "nixpkgs-python"
       }
     }
   },
